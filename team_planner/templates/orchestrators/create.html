@@ -16,6 +16,11 @@
                     <form method="post">
                         {% csrf_token %}
                         <div class="form-group mb-3">
+                            <label for="name">Run Name</label>
+                            <input type="text" class="form-control" id="name" name="name" required placeholder="e.g., January 2025 Schedule">
+                        </div>
+                        
+                        <div class="form-group mb-3">
                             <label for="start_date">Start Date</label>
                             <input type="date" class="form-control" id="start_date" name="start_date" required>
                         </div>
@@ -26,14 +31,39 @@
                         </div>
                         
                         <div class="form-group mb-3">
+                            <label>Shift Types to Schedule</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="schedule_incidents" name="schedule_incidents" checked>
+                                <label class="form-check-label" for="schedule_incidents">
+                                    <strong>Incidents</strong> - Business hours coverage (Mon-Fri 08:00-17:00)
+                                </label>
+                                <small class="form-text text-muted d-block">Individual daily shifts, same engineer for the week</small>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="schedule_incidents_standby" name="schedule_incidents_standby">
+                                <label class="form-check-label" for="schedule_incidents_standby">
+                                    <strong>Incidents-Standby</strong> - Secondary coverage (Mon-Fri 08:00-17:00)
+                                </label>
+                                <small class="form-text text-muted d-block">Backup engineer working alongside Incidents</small>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="schedule_waakdienst" name="schedule_waakdienst" checked>
+                                <label class="form-check-label" for="schedule_waakdienst">
+                                    <strong>Waakdienst</strong> - On-call coverage (evenings, nights, weekends)
+                                </label>
+                                <small class="form-text text-muted d-block">Wed 17:00 - Wed 08:00, individual daily shifts</small>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group mb-3">
                             <label for="description">Description (Optional)</label>
                             <textarea class="form-control" id="description" name="description" rows="3" placeholder="Description of this orchestration run..."></textarea>
                         </div>
                         
                         <div class="form-check mb-3">
-                            <input class="form-check-input" type="checkbox" id="dry_run" name="dry_run" checked>
-                            <label class="form-check-label" for="dry_run">
-                                Dry Run (Preview results without applying)
+                            <input class="form-check-input" type="checkbox" id="preview_only" name="preview_only" checked>
+                            <label class="form-check-label" for="preview_only">
+                                <strong>Preview Only</strong> - Generate preview without creating actual shifts
                             </label>
                         </div>
                         
@@ -47,29 +77,35 @@
         <div class="col-md-4">
             <div class="card">
                 <div class="card-header">
-                    <h6>Current System State</h6>
+                    <h6>Employee Availability</h6>
                 </div>
                 <div class="card-body">
-                    <p><strong>Active Employees:</strong> {{ employee_count }}</p>
-                    <p><strong>Available Shifts:</strong> {{ shift_count }}</p>
-                    <p><strong>Pending Leaves:</strong> {{ leave_count }}</p>
+                    <p><strong>Incidents Available:</strong> {{ eligible_incidents }}</p>
+                    <p><strong>Waakdienst Available:</strong> {{ eligible_waakdienst }}</p>
                 </div>
             </div>
             
             <div class="card mt-3">
                 <div class="card-header">
-                    <h6>About Orchestration</h6>
+                    <h6>Shift Scheduling Logic</h6>
                 </div>
                 <div class="card-body">
                     <p class="card-text small">
-                        The orchestration engine will automatically assign shifts based on:
+                        <strong>Incidents & Incidents-Standby:</strong><br>
+                        • Same engineer gets 5 daily shifts (Mon-Fri)<br>
+                        • New engineer rotation each Monday<br>
+                        • Individual 9-hour shifts (08:00-17:00)
                     </p>
-                    <ul class="small">
-                        <li>Employee availability</li>
-                        <li>Fairness distribution</li>
-                        <li>Skill requirements</li>
-                        <li>Leave requests</li>
-                    </ul>
+                    <p class="card-text small">
+                        <strong>Waakdienst:</strong><br>
+                        • Same engineer gets 7 daily shifts<br>
+                        • Wednesday 17:00 to Wednesday 08:00<br>
+                        • Covers evenings, nights, and weekends
+                    </p>
+                    <p class="card-text small">
+                        <strong>Fair Distribution:</strong><br>
+                        Each shift type maintains separate fairness tracking
+                    </p>
                 </div>
             </div>
         </div>

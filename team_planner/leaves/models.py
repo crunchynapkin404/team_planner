@@ -123,6 +123,108 @@ class LeaveRequest(TimeStampedModel):
     @property
     def can_be_cancelled(self):
         return self.status in [self.Status.PENDING, self.Status.APPROVED]
+    
+    def get_conflicting_shifts(self):
+        """Get shifts that conflict with this leave request."""
+        from team_planner.shifts.models import Shift
+        
+        return Shift.objects.filter(
+            assigned_employee=self.employee,
+            start_datetime__date__lte=self.end_date,
+            end_datetime__date__gte=self.start_date,
+            status__in=['scheduled', 'confirmed']
+        ).select_related('template')
+    
+    @property 
+    def has_shift_conflicts(self):
+        """Check if this leave request conflicts with assigned shifts."""
+        return self.get_conflicting_shifts().exists()
+    
+    def get_suggested_swap_employees(self):
+        """Get employees who could potentially take over conflicting shifts."""
+        from django.contrib.auth import get_user_model
+        from team_planner.shifts.models import Shift
+        
+        User = get_user_model()
+        conflicting_shifts = self.get_conflicting_shifts()
+        
+        if not conflicting_shifts.exists():
+            return User.objects.none()
+        
+        # Get employees who are available for the same shift types
+        available_employees = User.objects.filter(is_active=True).exclude(pk=self.employee.pk)
+        
+        # Filter by availability toggles for each shift type
+        incident_shifts = conflicting_shifts.filter(template__shift_type='incidents')
+        waakdienst_shifts = conflicting_shifts.filter(template__shift_type='waakdienst')
+        
+        if incident_shifts.exists():
+            available_employees = available_employees.filter(
+                employee_profile__available_for_incidents=True
+            )
+        
+        if waakdienst_shifts.exists():
+            available_employees = available_employees.filter(
+                employee_profile__available_for_waakdienst=True
+            )
+        
+        # Exclude employees who already have shifts during this period
+        for shift in conflicting_shifts:
+            conflicting_employee_shifts = Shift.objects.filter(
+                start_datetime__lt=shift.end_datetime,
+                end_datetime__gt=shift.start_datetime,
+                status__in=['scheduled', 'confirmed']
+            ).values_list('assigned_employee', flat=True)
+            
+            available_employees = available_employees.exclude(
+                pk__in=conflicting_employee_shifts
+            )
+        
+        return available_employees.select_related('employee_profile')
+    
+    def can_be_approved(self):
+        """Check if leave request can be approved (no unresolved shift conflicts)."""
+        if self.status != self.Status.PENDING:
+            return False
+        
+        # If there are conflicting shifts, check if they have pending/approved swap requests
+        conflicting_shifts = self.get_conflicting_shifts()
+        
+        for shift in conflicting_shifts:
+            # Check if shift has an approved swap request that resolves the conflict
+            from team_planner.shifts.models import SwapRequest
+            
+            approved_swaps = SwapRequest.objects.filter(
+                requesting_shift=shift,
+                status='approved'
+            )
+            
+            if not approved_swaps.exists():
+                # No approved swap for this shift - leave cannot be approved
+                return False
+        
+        return True
+    
+    def get_blocking_message(self):
+        """Get message explaining why leave request is blocked."""
+        if not self.has_shift_conflicts:
+            return None
+        
+        conflicting_shifts = self.get_conflicting_shifts()
+        shift_count = conflicting_shifts.count()
+        
+        if shift_count == 1:
+            shift = conflicting_shifts.first()
+            return (
+                f"You have a {shift.template.get_shift_type_display()} shift "
+                f"on {shift.start_datetime.date()} that conflicts with this leave request. "
+                f"Please arrange a swap for this shift before the leave can be approved."
+            )
+        else:
+            return (
+                f"You have {shift_count} shifts during this leave period that need to be "
+                f"swapped with other employees before the leave can be approved."
+            )
 
 
 class Holiday(TimeStampedModel):

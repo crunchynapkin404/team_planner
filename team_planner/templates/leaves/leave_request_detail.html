@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block title %}Leave Request Details{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h3>Leave Request Details</h3>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h5>Request Information</h5>
+                            <p><strong>Employee:</strong> {{ leave_request.employee.user.get_full_name }}</p>
+                            <p><strong>Start Date:</strong> {{ leave_request.start_date }}</p>
+                            <p><strong>End Date:</strong> {{ leave_request.end_date }}</p>
+                            <p><strong>Type:</strong> {{ leave_request.get_leave_type_display }}</p>
+                            <p><strong>Status:</strong> 
+                                <span class="badge 
+                                    {% if leave_request.status == 'pending' %}badge-warning
+                                    {% elif leave_request.status == 'approved' %}badge-success
+                                    {% elif leave_request.status == 'rejected' %}badge-danger
+                                    {% elif leave_request.status == 'cancelled' %}badge-secondary
+                                    {% endif %}">
+                                    {{ leave_request.get_status_display }}
+                                </span>
+                            </p>
+                            {% if leave_request.reason %}
+                            <p><strong>Reason:</strong> {{ leave_request.reason }}</p>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <h5>Shift Conflicts</h5>
+                            {% if conflicting_shifts %}
+                                <div class="alert alert-warning">
+                                    <p><strong>This leave request conflicts with the following shifts:</strong></p>
+                                    <ul class="mb-0">
+                                        {% for shift in conflicting_shifts %}
+                                        <li>{{ shift.date }} - {{ shift.start_time }} to {{ shift.end_time }} ({{ shift.role }})</li>
+                                        {% endfor %}
+                                    </ul>
+                                </div>
+                                
+                                {% if suggested_employees %}
+                                <div class="alert alert-info">
+                                    <p><strong>Suggested employees for swap:</strong></p>
+                                    <ul class="mb-0">
+                                        {% for employee in suggested_employees %}
+                                        <li>{{ employee.user.get_full_name }} - {{ employee.role }}</li>
+                                        {% endfor %}
+                                    </ul>
+                                </div>
+                                {% endif %}
+                            {% else %}
+                                <div class="alert alert-success">
+                                    <p class="mb-0">No shift conflicts detected.</p>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <hr>
+
+                    <div class="form-actions">
+                        {% if leave_request.status == 'pending' %}
+                            <a href="{% url 'leaves:approve_leave_request' leave_request.pk %}" class="btn btn-success">Approve</a>
+                            <a href="{% url 'leaves:reject_leave_request' leave_request.pk %}" class="btn btn-danger">Reject</a>
+                        {% endif %}
+                        <a href="{% url 'leaves:leave_request_list' %}" class="btn btn-secondary">Back to List</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

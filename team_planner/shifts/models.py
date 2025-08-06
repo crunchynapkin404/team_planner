@@ -10,6 +10,7 @@ from team_planner.contrib.sites.models import TimeStampedModel
 class ShiftType(models.TextChoices):
     """Shift type choices matching our roadmap requirements."""
     INCIDENTS = "incidents", _("Incidents")
+    INCIDENTS_STANDBY = "incidents_standby", _("Incidents-Standby")
     WAAKDIENST = "waakdienst", _("Waakdienst")
     CHANGES = "changes", _("Changes")
     PROJECTS = "projects", _("Projects")
@@ -180,6 +181,122 @@ class SwapRequest(TimeStampedModel):
 
     def get_absolute_url(self):
         return reverse("shifts:swap_detail", kwargs={"pk": self.pk})
+    
+    @property
+    def is_pending(self):
+        return self.status == self.Status.PENDING
+    
+    @property
+    def is_approved(self):
+        return self.status == self.Status.APPROVED
+    
+    @property
+    def can_be_cancelled(self):
+        return self.status in [self.Status.PENDING]
+    
+    @property
+    def can_be_approved(self):
+        return self.status == self.Status.PENDING
+    
+    def approve(self, approved_by_user, response_notes=""):
+        """Approve the swap request and execute the swap."""
+        from django.utils import timezone
+        
+        if not self.can_be_approved:
+            raise ValueError("Swap request cannot be approved in current status")
+        
+        # Update the swap request
+        self.status = self.Status.APPROVED
+        self.approved_by = approved_by_user
+        self.approved_datetime = timezone.now()
+        self.response_notes = response_notes
+        self.save()
+        
+        # Execute the actual swap
+        self._execute_swap()
+    
+    def reject(self, response_notes=""):
+        """Reject the swap request."""
+        if not self.can_be_approved:
+            raise ValueError("Swap request cannot be rejected in current status")
+        
+        self.status = self.Status.REJECTED
+        self.response_notes = response_notes
+        self.save()
+    
+    def cancel(self):
+        """Cancel the swap request."""
+        if not self.can_be_cancelled:
+            raise ValueError("Swap request cannot be cancelled in current status")
+        
+        self.status = self.Status.CANCELLED
+        self.save()
+    
+    def _execute_swap(self):
+        """Execute the actual shift swap."""
+        # If there's a target shift, swap the assignments
+        if self.target_shift:
+            # Swap the employees
+            original_requesting_employee = self.requesting_shift.assigned_employee
+            original_target_employee = self.target_shift.assigned_employee
+            
+            self.requesting_shift.assigned_employee = original_target_employee
+            self.target_shift.assigned_employee = original_requesting_employee
+            
+            # Add notes about the swap
+            swap_note = f"Swapped via request #{self.pk}"
+            self.requesting_shift.notes = f"{self.requesting_shift.notes}\n{swap_note}".strip()
+            self.target_shift.notes = f"{self.target_shift.notes}\n{swap_note}".strip()
+            
+            self.requesting_shift.save()
+            self.target_shift.save()
+        else:
+            # Just reassign the requesting shift to target employee
+            self.requesting_shift.assigned_employee = self.target_employee
+            swap_note = f"Reassigned via swap request #{self.pk}"
+            self.requesting_shift.notes = f"{self.requesting_shift.notes}\n{swap_note}".strip()
+            self.requesting_shift.save()
+    
+    def validate_swap(self):
+        """Validate that the swap is feasible."""
+        errors = []
+        
+        # Check if employees are the same
+        if self.requesting_employee == self.target_employee:
+            errors.append("Cannot swap shift with yourself")
+        
+        # Check if requesting employee owns the requesting shift
+        if self.requesting_shift.assigned_employee != self.requesting_employee:
+            errors.append("You can only swap your own shifts")
+        
+        # If target shift exists, check if target employee owns it
+        if self.target_shift and self.target_shift.assigned_employee != self.target_employee:
+            errors.append("Target employee must own the target shift")
+        
+        # Check if shifts overlap for target employee (if no target shift)
+        if not self.target_shift:
+            overlapping_shifts = Shift.objects.filter(
+                assigned_employee=self.target_employee,
+                start_datetime__lt=self.requesting_shift.end_datetime,
+                end_datetime__gt=self.requesting_shift.start_datetime
+            ).exclude(pk=self.requesting_shift.pk)
+            
+            if overlapping_shifts.exists():
+                errors.append("Target employee has conflicting shifts during this period")
+        
+        # Check if target employee has availability for the shift type
+        try:
+            profile = self.target_employee.employee_profile
+            shift_type = self.requesting_shift.template.shift_type
+            
+            if shift_type == 'incidents' and not profile.available_for_incidents:
+                errors.append("Target employee is not available for incident shifts")
+            elif shift_type == 'waakdienst' and not profile.available_for_waakdienst:
+                errors.append("Target employee is not available for waakdienst shifts")
+        except:
+            errors.append("Target employee profile not found")
+        
+        return errors
 
 
 class FairnessScore(TimeStampedModel):

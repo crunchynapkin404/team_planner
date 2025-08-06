@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}Leave Requests{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2>Leave Requests</h2>
+                <div>
+                    <a href="{% url 'leaves:create_leave_request' %}" class="btn btn-primary">Request Leave</a>
+                </div>
+            </div>
+
+            {% if leave_requests %}
+                <div class="card">
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Employee</th>
+                                        <th>Dates</th>
+                                        <th>Type</th>
+                                        <th>Status</th>
+                                        <th>Conflicts</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for leave_request in leave_requests %}
+                                    <tr>
+                                        <td>
+                                            <strong>{{ leave_request.employee.user.get_full_name }}</strong><br>
+                                            <small class="text-muted">{{ leave_request.employee.user.email }}</small>
+                                        </td>
+                                        <td>
+                                            <strong>{{ leave_request.start_date }}</strong><br>
+                                            {% if leave_request.end_date != leave_request.start_date %}
+                                                to {{ leave_request.end_date }}
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ leave_request.get_leave_type_display }}</td>
+                                        <td>
+                                            <span class="badge 
+                                                {% if leave_request.status == 'pending' %}badge-warning
+                                                {% elif leave_request.status == 'approved' %}badge-success
+                                                {% elif leave_request.status == 'rejected' %}badge-danger
+                                                {% elif leave_request.status == 'cancelled' %}badge-secondary
+                                                {% endif %}">
+                                                {{ leave_request.get_status_display }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            {% if leave_request.has_shift_conflicts %}
+                                                <span class="badge badge-warning">Has Conflicts</span>
+                                            {% else %}
+                                                <span class="badge badge-success">No Conflicts</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm">
+                                                <a href="{% url 'leaves:leave_request_detail' leave_request.pk %}" 
+                                                   class="btn btn-outline-primary">View</a>
+                                                {% if leave_request.status == 'pending' %}
+                                                    <a href="{% url 'leaves:approve_leave_request' leave_request.pk %}" 
+                                                       class="btn btn-outline-success">Approve</a>
+                                                    <a href="{% url 'leaves:reject_leave_request' leave_request.pk %}" 
+                                                       class="btn btn-outline-danger">Reject</a>
+                                                {% endif %}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            {% else %}
+                <div class="alert alert-info">
+                    <h4>No Leave Requests</h4>
+                    <p>There are currently no leave requests.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

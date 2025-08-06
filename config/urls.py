@@ -8,6 +8,7 @@ from django.views.generic import TemplateView
 from drf_spectacular.views import SpectacularAPIView
 from drf_spectacular.views import SpectacularSwaggerView
 from rest_framework.authtoken.views import obtain_auth_token
+from team_planner.utils.csrf_views import csrf_token_view
 
 urlpatterns = [
     path("", TemplateView.as_view(template_name="pages/home.html"), name="home"),
@@ -23,12 +24,16 @@ urlpatterns = [
     path("accounts/", include("allauth.urls")),
     # Your stuff: custom urls includes go here
     path("orchestrators/", include("team_planner.orchestrators.urls", namespace="orchestrators")),
+    path("shifts/", include("team_planner.shifts.urls", namespace="shifts")),
+    path("leaves/", include("team_planner.leaves.urls", namespace="leaves")),
     # Media files
     *static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT),
 ]
 
 # API URLS
 urlpatterns += [
+    # CSRF token endpoint
+    path("api/csrf/", csrf_token_view, name="csrf-token"),
     # API base url
     path("api/", include("config.api_router")),
     # DRF auth token

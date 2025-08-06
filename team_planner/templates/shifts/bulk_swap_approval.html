@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+
+{% block title %}Bulk Swap Approval{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h3>Bulk Swap Approval</h3>
+                    <p class="mb-0">Approve or reject multiple swap requests at once</p>
+                </div>
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+                        {{ form|crispy }}
+                        <div class="form-actions">
+                            <button type="submit" name="action" value="approve" class="btn btn-success">Approve Selected</button>
+                            <button type="submit" name="action" value="reject" class="btn btn-danger">Reject Selected</button>
+                            <a href="{% url 'shifts:swap_list' %}" class="btn btn-secondary">Back</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

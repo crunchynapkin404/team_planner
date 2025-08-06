@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views
+from . import views, api
 
 app_name = 'orchestrators'
 
@@ -11,6 +11,11 @@ urlpatterns = [
     path('create/', views.create_orchestration, name='create'),
     path('detail/<int:pk>/', views.orchestration_detail, name='detail'),
     path('<int:pk>/', views.orchestration_detail, name='run_detail'),  # Keep for compatibility
+    
+    # API endpoints for React frontend
+    path('api/create/', api.orchestrator_create_api, name='create_api'),
+    path('api/apply-preview/', api.orchestrator_apply_preview_api, name='apply_preview_api'),
+    path('api/status/', api.orchestrator_status_api, name='status_api'),
     
     # Preview system (placeholder views for now)
     # path('preview/', views.preview_view, name='preview'),

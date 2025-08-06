@@ -20,7 +20,10 @@ class OrchestrationForm(forms.ModelForm):
     
     class Meta:
         model = OrchestrationRun
-        fields = ['name', 'description', 'start_date', 'end_date']
+        fields = [
+            'name', 'description', 'start_date', 'end_date',
+            'schedule_incidents', 'schedule_incidents_standby', 'schedule_waakdienst'
+        ]
         widgets = {
             'start_date': forms.DateInput(attrs={'type': 'date'}),
             'end_date': forms.DateInput(attrs={'type': 'date'}),

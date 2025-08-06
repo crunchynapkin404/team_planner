@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}Swap Requests{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2>Swap Requests</h2>
+                <div>
+                    <a href="{% url 'shifts:shift_list' %}" class="btn btn-outline-primary">View Shifts</a>
+                </div>
+            </div>
+
+            {% if swap_requests %}
+                <div class="card">
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Original Shift</th>
+                                        <th>Requested Employee</th>
+                                        <th>Target Shift</th>
+                                        <th>Status</th>
+                                        <th>Created</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for swap_request in swap_requests %}
+                                    <tr>
+                                        <td>
+                                            <strong>{{ swap_request.original_shift.date }}</strong><br>
+                                            {{ swap_request.original_shift.start_time }} - {{ swap_request.original_shift.end_time }}<br>
+                                            <small class="text-muted">{{ swap_request.original_shift.role }}</small>
+                                        </td>
+                                        <td>
+                                            <strong>{{ swap_request.requesting_employee.user.get_full_name }}</strong><br>
+                                            <small class="text-muted">{{ swap_request.requesting_employee.user.email }}</small>
+                                        </td>
+                                        <td>
+                                            {% if swap_request.target_shift %}
+                                                <strong>{{ swap_request.target_shift.date }}</strong><br>
+                                                {{ swap_request.target_shift.start_time }} - {{ swap_request.target_shift.end_time }}<br>
+                                                <small class="text-muted">{{ swap_request.target_shift.role }}</small>
+                                            {% else %}
+                                                <span class="text-muted">Open swap</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <span class="badge 
+                                                {% if swap_request.status == 'pending' %}badge-warning
+                                                {% elif swap_request.status == 'approved' %}badge-success
+                                                {% elif swap_request.status == 'rejected' %}badge-danger
+                                                {% elif swap_request.status == 'cancelled' %}badge-secondary
+                                                {% endif %}">
+                                                {{ swap_request.get_status_display }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            {{ swap_request.created_at|date:"M d, Y" }}<br>
+                                            <small class="text-muted">{{ swap_request.created_at|time:"H:i" }}</small>
+                                        </td>
+                                        <td>
+                                            {% if swap_request.status == 'pending' %}
+                                                <div class="btn-group btn-group-sm" role="group">
+                                                    <a href="{% url 'shifts:respond_to_swap_request' swap_request.pk %}" 
+                                                       class="btn btn-outline-primary">Respond</a>
+                                                    {% if user.employee_profile == swap_request.requesting_employee %}
+                                                    <form method="post" style="display: inline;">
+                                                        {% csrf_token %}
+                                                        <input type="hidden" name="action" value="cancel">
+                                                        <button type="submit" class="btn btn-outline-secondary">Cancel</button>
+                                                    </form>
+                                                    {% endif %}
+                                                </div>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            {% else %}
+                <div class="alert alert-info">
+                    <h4>No Swap Requests</h4>
+                    <p>There are currently no swap requests.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

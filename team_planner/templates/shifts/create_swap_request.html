@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+
+{% block title %}Create Swap Request{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h3>Create Swap Request</h3>
+                    <p class="mb-0">Request to swap your shift with another employee</p>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <strong>Current Shift:</strong><br>
+                        Date: {{ shift.date }}<br>
+                        Time: {{ shift.start_time }} - {{ shift.end_time }}<br>
+                        Role: {{ shift.role }}<br>
+                        Status: {{ shift.get_status_display }}
+                    </div>
+                    
+                    <form method="post">
+                        {% csrf_token %}
+                        {{ form|crispy }}
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">Create Swap Request</button>
+                            <a href="{% url 'shifts:shift_list' %}" class="btn btn-secondary">Cancel</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

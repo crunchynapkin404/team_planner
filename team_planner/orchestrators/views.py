@@ -52,6 +52,16 @@ def create_orchestration(request):
             end_date = date.fromisoformat(request.POST.get('end_date'))
             preview_only = request.POST.get('preview_only') == 'true'
             
+            # Parse shift type selections
+            schedule_incidents = request.POST.get('schedule_incidents') == 'on'
+            schedule_incidents_standby = request.POST.get('schedule_incidents_standby') == 'on'
+            schedule_waakdienst = request.POST.get('schedule_waakdienst') == 'on'
+            
+            # Validate at least one shift type is selected
+            if not any([schedule_incidents, schedule_incidents_standby, schedule_waakdienst]):
+                messages.error(request, 'At least one shift type must be selected.')
+                return redirect('orchestrators:dashboard')
+            
             # Validate date range
             if start_date >= end_date:
                 messages.error(request, 'End date must be after start date.')
@@ -69,12 +79,21 @@ def create_orchestration(request):
                     initiated_by=request.user,
                     start_date=start_date,
                     end_date=end_date,
+                    schedule_incidents=schedule_incidents,
+                    schedule_incidents_standby=schedule_incidents_standby,
+                    schedule_waakdienst=schedule_waakdienst,
                     status=OrchestrationRun.Status.RUNNING
                 )
                 
                 try:
-                    # Create and run orchestrator
-                    orchestrator = ShiftOrchestrator(start_datetime, end_datetime)
+                    # Create and run orchestrator with selected shift types
+                    orchestrator = ShiftOrchestrator(
+                        start_datetime, 
+                        end_datetime,
+                        schedule_incidents=schedule_incidents,
+                        schedule_incidents_standby=schedule_incidents_standby,
+                        schedule_waakdienst=schedule_waakdienst
+                    )
                     
                     if preview_only:
                         result = orchestrator.preview_schedule()
@@ -90,7 +109,15 @@ def create_orchestration(request):
                         run.status = OrchestrationRun.Status.PREVIEW
                         run.save()
                         
-                        messages.success(request, f"Preview generated: {result['total_shifts']} shifts planned")
+                        shift_summary = []
+                        if schedule_incidents:
+                            shift_summary.append(f"{result['incidents_shifts']} incidents")
+                        if schedule_incidents_standby:
+                            shift_summary.append(f"{result['incidents_standby_shifts']} incidents-standby")
+                        if schedule_waakdienst:
+                            shift_summary.append(f"{result['waakdienst_shifts']} waakdienst")
+                        
+                        messages.success(request, f"Preview generated: {result['total_shifts']} daily shifts planned ({', '.join(shift_summary)})")
                         return redirect('orchestrators:preview')
                     else:
                         result = orchestrator.apply_schedule()
@@ -99,7 +126,8 @@ def create_orchestration(request):
                         run.status = OrchestrationRun.Status.COMPLETED
                         run.completed_at = timezone.now()
                         run.total_shifts_created = result['total_shifts']
-                        run.incidents_shifts_created = result['incident_shifts']
+                        run.incidents_shifts_created = result['incidents_shifts']
+                        run.incidents_standby_shifts_created = result['incidents_standby_shifts']
                         run.waakdienst_shifts_created = result['waakdienst_shifts']
                         run.save()
                         
@@ -111,10 +139,17 @@ def create_orchestration(request):
                                 assignment_reason=shift.assignment_reason or 'Fair distribution algorithm'
                             )
                         
+                        shift_summary = []
+                        if schedule_incidents:
+                            shift_summary.append(f"{result['incidents_shifts']} incidents")
+                        if schedule_incidents_standby:
+                            shift_summary.append(f"{result['incidents_standby_shifts']} incidents-standby")
+                        if schedule_waakdienst:
+                            shift_summary.append(f"{result['waakdienst_shifts']} waakdienst")
+                        
                         messages.success(
                             request, 
-                            f"Orchestration completed! Created {result['total_shifts']} shifts "
-                            f"({result['incident_shifts']} incidents, {result['waakdienst_shifts']} waakdienst)"
+                            f"Orchestration completed! Created {result['total_shifts']} daily shifts ({', '.join(shift_summary)})"
                         )
                         
                         return redirect('orchestrators:detail', run_id=run.pk)

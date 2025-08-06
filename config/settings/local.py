@@ -77,5 +77,32 @@ CELERY_TASK_EAGER_PROPAGATES = True
 # Disable email verification for local development
 ACCOUNT_EMAIL_VERIFICATION = "none"
 
+# django-cors-headers
+# ------------------------------------------------------------------------------
+# Allow all origins in development
+CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_CREDENTIALS = True
+
+# CSRF
+# ------------------------------------------------------------------------------
+# Trust localhost origins for CSRF
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
+
+# For development, use only TokenAuthentication for API endpoints to avoid CSRF issues
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework.authentication.TokenAuthentication",
+    ),
+    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
 # Your stuff...
 # ------------------------------------------------------------------------------

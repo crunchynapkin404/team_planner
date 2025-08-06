@@ -31,6 +31,11 @@ class OrchestrationRun(TimeStampedModel):
     start_date = models.DateField(_("Planning Start Date"))
     end_date = models.DateField(_("Planning End Date"))
     
+    # Shift types to schedule
+    schedule_incidents = models.BooleanField(_("Schedule Incidents"), default=True)
+    schedule_incidents_standby = models.BooleanField(_("Schedule Incidents-Standby"), default=False)
+    schedule_waakdienst = models.BooleanField(_("Schedule Waakdienst"), default=True)
+    
     # Execution details
     initiated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -44,6 +49,7 @@ class OrchestrationRun(TimeStampedModel):
     # Results and metrics
     total_shifts_created = models.PositiveIntegerField(_("Total Shifts Created"), default=0)
     incidents_shifts_created = models.PositiveIntegerField(_("Incidents Shifts Created"), default=0)
+    incidents_standby_shifts_created = models.PositiveIntegerField(_("Incidents-Standby Shifts Created"), default=0)
     waakdienst_shifts_created = models.PositiveIntegerField(_("Waakdienst Shifts Created"), default=0)
     
     # Configuration used
@@ -113,6 +119,7 @@ class OrchestrationResult(TimeStampedModel):
         max_length=20,
         choices=[
             ("incidents", _("Incidents")),
+            ("incidents_standby", _("Incidents-Standby")),
             ("waakdienst", _("Waakdienst")),
         ]
     )
