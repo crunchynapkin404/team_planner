@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Orchestrator Dashboard{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Orchestrator Dashboard</h1>
+    
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Recent Orchestrations</h5>
+                    <p class="card-text">{{ recent_runs.count }} orchestrations run</p>
+                    <a href="{% url 'orchestrators:create' %}" class="btn btn-primary">New Orchestration</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">System Status</h5>
+                    <p class="card-text">
+                        <span class="badge badge-success">Active</span>
+                        All systems operational
+                    </p>
+                    <a href="{% url 'orchestrators:fairness_report' %}" class="btn btn-outline-primary">Fairness Report</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h5>Recent Orchestrations</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Status</th>
+                            <th>Shifts Assigned</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for run in recent_runs %}
+                        <tr>
+                            <td>{{ run.created_at|date:"M d, Y H:i" }}</td>
+                            <td>
+                                {% if run.status == 'completed' %}
+                                    <span class="badge badge-success">{{ run.get_status_display }}</span>
+                                {% elif run.status == 'failed' %}
+                                    <span class="badge badge-danger">{{ run.get_status_display }}</span>
+                                {% else %}
+                                    <span class="badge badge-warning">{{ run.get_status_display }}</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ run.orchestrationresult_set.count }}</td>
+                            <td>
+                                <a href="{% url 'orchestrators:run_detail' run.pk %}" class="btn btn-sm btn-outline-primary">View</a>
+                                {% if run.status == 'completed' and not run.applied %}
+                                    <a href="{% url 'orchestrators:apply' run.pk %}" class="btn btn-sm btn-success">Apply</a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="4" class="text-center text-muted">No orchestrations yet</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
