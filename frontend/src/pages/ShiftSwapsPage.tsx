@@ -36,8 +36,11 @@ import {
   MoreVert,
   Refresh,
   Visibility,
+  GroupWork,
 } from '@mui/icons-material';
 import { userService, type TeamMember, type UserShift, type SwapRequest } from '../services/userService';
+import { formatDate as euroFormatDate, formatDateTime as euroFormatDateTime, formatTime as euroFormatTime } from '../utils/dateUtils';
+import BulkSwapDialog from '../components/BulkSwapDialog';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -83,6 +86,7 @@ const ShiftSwapsPage: React.FC = () => {
   
   // Create swap request state
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [bulkSwapDialogOpen, setBulkSwapDialogOpen] = useState(false);
   const [userShifts, setUserShifts] = useState<UserShift[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [employeeShifts, setEmployeeShifts] = useState<UserShift[]>([]);
@@ -249,13 +253,13 @@ const ShiftSwapsPage: React.FC = () => {
 
   const formatDateTime = (dateTimeString: string) => {
     const date = new Date(dateTimeString);
-    return date.toLocaleString();
+    return euroFormatDateTime(date);
   };
 
   const formatShiftTime = (shift: SwapRequest['requesting_shift']) => {
     const start = new Date(shift.start_time);
     const end = new Date(shift.end_time);
-    return `${start.toLocaleDateString()} ${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    return `${euroFormatDate(start)} ${euroFormatTime(start)} - ${euroFormatTime(end)}`;
   };
 
   const getStatusColor = (status: string): 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning' => {
@@ -432,6 +436,13 @@ const ShiftSwapsPage: React.FC = () => {
             onClick={fetchSwapRequests}
           >
             Refresh
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<GroupWork />}
+            onClick={() => setBulkSwapDialogOpen(true)}
+          >
+            Bulk Swap
           </Button>
           <Button
             variant="contained"
@@ -651,7 +662,7 @@ const ShiftSwapsPage: React.FC = () => {
                             <strong>{shift.title}</strong>
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
-                            {new Date(shift.start_time).toLocaleString()} - {new Date(shift.end_time).toLocaleTimeString()}
+                            {euroFormatDateTime(new Date(shift.start_time))} - {euroFormatTime(new Date(shift.end_time))}
                           </Typography>
                         </Box>
                       </MenuItem>
@@ -698,7 +709,7 @@ const ShiftSwapsPage: React.FC = () => {
                               <strong>{shift.title}</strong>
                             </Typography>
                             <Typography variant="caption" color="text.secondary">
-                              {new Date(shift.start_time).toLocaleString()} - {new Date(shift.end_time).toLocaleTimeString()}
+                              {euroFormatDateTime(new Date(shift.start_time))} - {euroFormatTime(new Date(shift.end_time))}
                             </Typography>
                           </Box>
                         </MenuItem>
@@ -738,6 +749,16 @@ const ShiftSwapsPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Bulk Swap Dialog */}
+      <BulkSwapDialog
+        open={bulkSwapDialogOpen}
+        onClose={() => setBulkSwapDialogOpen(false)}
+        onSuccess={() => {
+          setBulkSwapDialogOpen(false);
+          fetchSwapRequests(); // Refresh the data
+        }}
+      />
     </Box>
   );
 };

@@ -39,6 +39,7 @@ import {
 } from '@mui/icons-material';
 import axios from 'axios';
 import { CalendarEvent } from '../types/calendar';
+import { formatDate, formatDateTime, formatTime } from '../utils/dateUtils';
 
 interface TimelineData {
   engineer: string;
@@ -284,19 +285,19 @@ const TimelinePage: React.FC = () => {
         weekStart.setDate(weekStart.getDate() - (weekStart.getDay() || 7) + 1);
         const weekEnd = new Date(weekStart);
         weekEnd.setDate(weekEnd.getDate() + 6);
-        return `${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+        return `${formatDate(weekStart)} - ${formatDate(weekEnd)}`;
       case 'month':
         const monthEnd = new Date(currentDate);
         monthEnd.setDate(monthEnd.getDate() + 30);
-        return `${currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${monthEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+        return `${formatDate(currentDate)} - ${formatDate(monthEnd)}`;
       case 'quarter':
         const quarterEnd = new Date(currentDate);
         quarterEnd.setDate(quarterEnd.getDate() + 90);
-        return `${currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${quarterEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+        return `${formatDate(currentDate)} - ${formatDate(quarterEnd)}`;
       case 'year':
         const yearEnd = new Date(currentDate);
         yearEnd.setDate(yearEnd.getDate() + 365);
-        return `${currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} - ${yearEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+        return `${formatDate(currentDate)} - ${formatDate(yearEnd)}`;
       default:
         return '';
     }

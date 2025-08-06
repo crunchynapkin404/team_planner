@@ -102,6 +102,8 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_PAGINATION_CLASS": "team_planner.utils.pagination.CustomPageNumberPagination",
+    "PAGE_SIZE": 20,
 }
 
 # Your stuff...

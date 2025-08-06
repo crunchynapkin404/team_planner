@@ -25,6 +25,7 @@ import {
 } from '@mui/icons-material';
 import { dashboardService, DashboardData, Engineer } from '../services/dashboardService';
 import { userService, UserDashboardData, UserShift } from '../services/userService';
+import { formatDate, formatDateTime } from '../utils/dateUtils';
 
 interface StatCardProps {
   title: string;
@@ -170,10 +171,14 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  const formatShiftTime = (shift: UserShift | { start_time: string; end_time: string; title?: string }) => {
+  const formatShiftTime = (shift: UserShift | { start_time: string; end_time: string; title?: string } | null | undefined) => {
+    if (!shift || !shift.start_time || !shift.end_time) {
+      return 'Time not available';
+    }
+    
     const start = new Date(shift.start_time);
     const end = new Date(shift.end_time);
-    return `${start.toLocaleDateString()} ${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    return `${formatDate(start)} ${formatDateTime(start).split(' ')[1]} - ${formatDateTime(end).split(' ')[1]}`;
   };
 
   const handleSwapResponse = async (requestId: number, action: 'approve' | 'reject') => {
@@ -243,7 +248,7 @@ const Dashboard: React.FC = () => {
                             size="small"
                           />
                           <Typography variant="caption" color="text.secondary">
-                            {new Date(activity.created_at).toLocaleDateString()}
+                            {formatDate(new Date(activity.created_at))}
                           </Typography>
                         </Box>
                       }
@@ -268,26 +273,33 @@ const Dashboard: React.FC = () => {
               </Typography>
             ) : (
               <List>
-                {upcomingShifts.map((shift) => (
-                  <ListItem key={shift.id} divider>
-                    <ListItemText
-                      primary={shift.title}
-                      secondary={
-                        <Box>
-                          <Typography variant="body2">
-                            {formatShiftTime(shift)}
-                          </Typography>
-                          <Chip
-                            label={shift.shift_type}
-                            color="primary"
-                            size="small"
-                            sx={{ mt: 0.5 }}
-                          />
-                        </Box>
-                      }
-                    />
-                  </ListItem>
-                ))}
+                {upcomingShifts.map((shift) => {
+                  // Defensive check to ensure shift has valid data
+                  if (!shift || !shift.id) {
+                    return null;
+                  }
+                  
+                  return (
+                    <ListItem key={shift.id} divider>
+                      <ListItemText
+                        primary={shift.title || 'Untitled shift'}
+                        secondary={
+                          <Box>
+                            <Typography variant="body2">
+                              {formatShiftTime(shift)}
+                            </Typography>
+                            <Chip
+                              label={shift.shift_type || 'Unknown'}
+                              color="primary"
+                              size="small"
+                              sx={{ mt: 0.5 }}
+                            />
+                          </Box>
+                        }
+                      />
+                    </ListItem>
+                  );
+                }).filter(Boolean)}
               </List>
             )}
           </Paper>
@@ -306,46 +318,53 @@ const Dashboard: React.FC = () => {
               </Typography>
             ) : (
               <List>
-                {incomingSwapRequests.map((request) => (
-                  <ListItem key={request.id} divider>
-                    <ListItemText
-                      primary={`${request.requester.first_name || request.requester.username} wants to swap`}
-                      secondary={
-                        <Box>
-                          <Typography variant="body2">
-                            Their shift: {formatShiftTime(request.requesting_shift)}
-                          </Typography>
-                          {request.target_shift && (
+                {incomingSwapRequests.map((request) => {
+                  // Defensive check to ensure request has valid data
+                  if (!request || !request.id) {
+                    return null;
+                  }
+                  
+                  return (
+                    <ListItem key={request.id} divider>
+                      <ListItemText
+                        primary={`${request.requester?.first_name || request.requester?.username || 'Unknown user'} wants to swap`}
+                        secondary={
+                          <Box>
                             <Typography variant="body2">
-                              Your shift: {formatShiftTime(request.target_shift)}
+                              Their shift: {formatShiftTime(request.requesting_shift)}
                             </Typography>
-                          )}
-                          {request.reason && (
-                            <Typography variant="body2" style={{ fontStyle: 'italic' }}>
-                              "{request.reason}"
-                            </Typography>
-                          )}
-                          <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
-                            <Button
-                              size="small"
-                              color="success"
-                              onClick={() => handleSwapResponse(request.id, 'approve')}
-                            >
-                              Approve
-                            </Button>
-                            <Button
-                              size="small"
-                              color="error"
-                              onClick={() => handleSwapResponse(request.id, 'reject')}
-                            >
-                              Reject
-                            </Button>
+                            {request.target_shift && (
+                              <Typography variant="body2">
+                                Your shift: {formatShiftTime(request.target_shift)}
+                              </Typography>
+                            )}
+                            {request.reason && (
+                              <Typography variant="body2" style={{ fontStyle: 'italic' }}>
+                                "{request.reason}"
+                              </Typography>
+                            )}
+                            <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
+                              <Button
+                                size="small"
+                                color="success"
+                                onClick={() => handleSwapResponse(request.id, 'approve')}
+                              >
+                                Approve
+                              </Button>
+                              <Button
+                                size="small"
+                                color="error"
+                                onClick={() => handleSwapResponse(request.id, 'reject')}
+                              >
+                                Reject
+                              </Button>
+                            </Box>
                           </Box>
-                        </Box>
-                      }
-                    />
-                  </ListItem>
-                ))}
+                        }
+                      />
+                    </ListItem>
+                  );
+                }).filter(Boolean)}
               </List>
             )}
           </Paper>

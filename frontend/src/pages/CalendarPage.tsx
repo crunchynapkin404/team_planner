@@ -3,6 +3,7 @@ import { Box, Alert, CircularProgress } from '@mui/material';
 import Calendar from '../components/calendar/Calendar';
 import { EventDropArg, EventClickArg, DateSelectArg } from '@fullcalendar/core';
 import { CalendarEvent } from '../types/calendar';
+import { formatDate } from '../utils/dateUtils';
 import axios from 'axios';
 
 const CalendarPage: React.FC = () => {
@@ -95,7 +96,7 @@ const CalendarPage: React.FC = () => {
     });
     
     // TODO: Open create shift modal
-    const newShift = confirm(`Create new shift for ${info.start.toLocaleDateString()}?`);
+    const newShift = confirm(`Create new shift for ${formatDate(info.start)}?`);
     if (newShift) {
       console.log('Creating new shift...');
       // TODO: Implement shift creation

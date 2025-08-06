@@ -44,6 +44,7 @@ import {
   People,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
+import { formatDate } from '../utils/dateUtils';
 
 interface User {
   id: number;
@@ -421,7 +422,7 @@ const TeamManagement: React.FC = () => {
                     </Box>
                   </TableCell>
                   <TableCell>
-                    {new Date(team.created).toLocaleDateString()}
+                    {formatDate(new Date(team.created))}
                   </TableCell>
                   <TableCell>
                     <Stack direction="row" spacing={1}>
@@ -554,7 +555,7 @@ const TeamManagement: React.FC = () => {
                           color={getRoleColor(member.role) as any}
                         />
                         <Typography variant="caption">
-                          Joined: {new Date(member.joined_date).toLocaleDateString()}
+                          Joined: {formatDate(new Date(member.joined_date))}
                         </Typography>
                       </Stack>
                     }

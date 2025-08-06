@@ -25,6 +25,7 @@ urlpatterns = [
     path("api/dashboard/", views.dashboard_api, name="dashboard_api"),
     path("api/swap-requests/<int:pk>/respond/", api.respond_to_swap_request_api, name="respond_to_swap_api"),
     path("api/swap-requests/create/", api.create_swap_request_api, name="create_swap_request_api"),
+    path("api/swap-requests/bulk-create/", api.create_bulk_swap_request_api, name="create_bulk_swap_request_api"),
     path("api/user/upcoming-shifts/", api.user_upcoming_shifts_api, name="user_upcoming_shifts_api"),
     path("api/user/shifts/", api.get_user_shifts_api, name="user_shifts_api"),
     path("api/user/incoming-swap-requests/", api.user_incoming_swap_requests_api, name="user_incoming_swap_requests_api"),

@@ -1,0 +1,269 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+
+{% block title %}Respond to Leave Request{% endblock %}
+
+{% block extra_css %}
+<style>
+    .request-summary {
+        background-color: #f8f9fa;
+        border-radius: 0.375rem;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    .conflict-alert {
+        border-left: 4px solid #dc3545;
+        background-color: #f8d7da;
+        border-color: #f5c6cb;
+    }
+    
+    .no-conflict-alert {
+        border-left: 4px solid #28a745;
+        background-color: #d4edda;
+        border-color: #c3e6cb;
+    }
+    
+    .shift-conflict-item {
+        background-color: white;
+        border: 1px solid #dee2e6;
+        border-radius: 0.375rem;
+        padding: 0.75rem;
+        margin-bottom: 0.5rem;
+    }
+    
+    .response-actions {
+        background-color: #f8f9fa;
+        border-radius: 0.375rem;
+        padding: 1.5rem;
+        margin-top: 1.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-10">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="mb-0">
+                        <i class="fas fa-clipboard-check me-2"></i>
+                        Respond to Leave Request
+                    </h3>
+                    <p class="text-muted mb-0">Review and approve/reject this leave request</p>
+                </div>
+                <div class="card-body">
+                    <!-- Request Summary -->
+                    <div class="request-summary">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h5>Request Details</h5>
+                                <p><strong>Employee:</strong> {{ leave_request.employee.get_full_name }}</p>
+                                <p><strong>Leave Type:</strong> {{ leave_request.leave_type.name|title }}</p>
+                                <p><strong>Start Date:</strong> {{ leave_request.start_date|date:"F d, Y" }}</p>
+                                <p><strong>End Date:</strong> {{ leave_request.end_date|date:"F d, Y" }}</p>
+                                <p><strong>Days Requested:</strong> {{ leave_request.days_requested }}</p>
+                                {% if leave_request.reason %}
+                                <p><strong>Reason:</strong></p>
+                                <p class="text-muted">{{ leave_request.reason }}</p>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6">
+                                <h5>Request Status</h5>
+                                <p><strong>Current Status:</strong> 
+                                    <span class="badge 
+                                        {% if leave_request.status == 'pending' %}bg-warning
+                                        {% elif leave_request.status == 'approved' %}bg-success
+                                        {% elif leave_request.status == 'rejected' %}bg-danger
+                                        {% elif leave_request.status == 'cancelled' %}bg-secondary
+                                        {% endif %}">
+                                        {{ leave_request.get_status_display }}
+                                    </span>
+                                </p>
+                                <p><strong>Submitted:</strong> {{ leave_request.created|date:"F d, Y" }} at {{ leave_request.created|time:"H:i" }}</p>
+                                {% if leave_request.approved_by %}
+                                <p><strong>{% if leave_request.status == 'approved' %}Approved{% else %}Processed{% endif %} by:</strong> {{ leave_request.approved_by.get_full_name }}</p>
+                                <p><strong>Date:</strong> {{ leave_request.approved_at|date:"F d, Y" }} at {{ leave_request.approved_at|time:"H:i" }}</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Conflict Analysis -->
+                    <div class="mb-4">
+                        <h5>Shift Conflict Analysis</h5>
+                        {% if conflicting_shifts %}
+                            <div class="alert conflict-alert">
+                                <h6 class="alert-heading">
+                                    <i class="fas fa-exclamation-triangle me-2"></i>
+                                    Shift Conflicts Detected
+                                </h6>
+                                <p>This leave request conflicts with {{ conflicting_shifts|length }} scheduled shift(s). 
+                                   These conflicts must be resolved before the leave can be approved.</p>
+                                
+                                <div class="mt-3">
+                                    {% for shift in conflicting_shifts %}
+                                    <div class="shift-conflict-item">
+                                        <div class="row align-items-center">
+                                            <div class="col-md-8">
+                                                <strong>{{ shift.template.name }}</strong> - {{ shift.template.get_shift_type_display }}<br>
+                                                <small class="text-muted">
+                                                    {{ shift.start_datetime|date:"F d, Y" }} 
+                                                    {{ shift.start_datetime|time:"H:i" }} - {{ shift.end_datetime|time:"H:i" }}
+                                                </small>
+                                            </div>
+                                            <div class="col-md-4 text-end">
+                                                {% with swap_requests=shift.swap_requests_as_source.all %}
+                                                    {% if swap_requests %}
+                                                        {% for swap in swap_requests %}
+                                                            <span class="badge 
+                                                                {% if swap.status == 'approved' %}bg-success
+                                                                {% elif swap.status == 'pending' %}bg-warning
+                                                                {% else %}bg-secondary
+                                                                {% endif %}">
+                                                                Swap {{ swap.get_status_display }}
+                                                            </span>
+                                                        {% endfor %}
+                                                    {% else %}
+                                                        <span class="badge bg-danger">No Swap Request</span>
+                                                    {% endif %}
+                                                {% endwith %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                
+                                {% if suggested_employees %}
+                                <div class="mt-3">
+                                    <h6>Suggested Employees for Coverage:</h6>
+                                    <div class="row">
+                                        {% for employee in suggested_employees %}
+                                        <div class="col-md-4 mb-2">
+                                            <div class="border rounded p-2">
+                                                <strong>{{ employee.get_full_name }}</strong><br>
+                                                <small class="text-muted">Available for coverage</small>
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                {% endif %}
+                            </div>
+                        {% else %}
+                            <div class="alert no-conflict-alert">
+                                <h6 class="alert-heading">
+                                    <i class="fas fa-check-circle me-2"></i>
+                                    No Conflicts Detected
+                                </h6>
+                                <p class="mb-0">This leave request does not conflict with any scheduled shifts and can be approved without additional arrangements.</p>
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Response Form -->
+                    {% if leave_request.status == 'pending' %}
+                    <div class="response-actions">
+                        <h5>Management Decision</h5>
+                        <form method="post">
+                            {% csrf_token %}
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    {{ form.action|crispy }}
+                                </div>
+                                <div class="col-md-6">
+                                    {{ form.rejection_reason|crispy }}
+                                </div>
+                            </div>
+                            
+                            {% if conflicting_shifts and not can_be_approved %}
+                            <div class="alert alert-warning">
+                                <strong>Note:</strong> This leave request cannot be approved until all shift conflicts are resolved through approved swap requests.
+                            </div>
+                            {% endif %}
+                            
+                            <div class="d-flex justify-content-between mt-4">
+                                <a href="{% url 'leaves:leave_request_list' %}" class="btn btn-secondary">
+                                    <i class="fas fa-arrow-left me-1"></i>
+                                    Back to List
+                                </a>
+                                <div>
+                                    <button type="submit" name="action" value="reject" class="btn btn-danger me-2">
+                                        <i class="fas fa-times me-1"></i>
+                                        Reject Request
+                                    </button>
+                                    <button type="submit" name="action" value="approve" class="btn btn-success"
+                                            {% if conflicting_shifts and not can_be_approved %}disabled title="Cannot approve with unresolved conflicts"{% endif %}>
+                                        <i class="fas fa-check me-1"></i>
+                                        Approve Request
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                    {% else %}
+                    <div class="response-actions">
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle me-2"></i>
+                            This leave request has already been processed and cannot be modified.
+                            {% if leave_request.rejection_reason %}
+                            <hr>
+                            <strong>Rejection Reason:</strong> {{ leave_request.rejection_reason }}
+                            {% endif %}
+                        </div>
+                        <a href="{% url 'leaves:leave_request_list' %}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left me-1"></i>
+                            Back to List
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const actionRadios = document.querySelectorAll('input[name="action"]');
+    const rejectionReasonField = document.getElementById('id_rejection_reason');
+    const rejectionReasonContainer = rejectionReasonField.closest('.form-group');
+    
+    function toggleRejectionReason() {
+        const selectedAction = document.querySelector('input[name="action"]:checked');
+        if (selectedAction && selectedAction.value === 'reject') {
+            rejectionReasonContainer.style.display = 'block';
+            rejectionReasonField.required = true;
+        } else {
+            rejectionReasonContainer.style.display = 'none';
+            rejectionReasonField.required = false;
+        }
+    }
+    
+    // Initialize
+    toggleRejectionReason();
+    
+    // Add event listeners
+    actionRadios.forEach(radio => {
+        radio.addEventListener('change', toggleRejectionReason);
+    });
+    
+    // Form submission confirmation
+    const form = document.querySelector('form');
+    form.addEventListener('submit', function(e) {
+        const selectedAction = document.querySelector('input[name="action"]:checked');
+        if (selectedAction) {
+            const actionText = selectedAction.value === 'approve' ? 'approve' : 'reject';
+            const confirmed = confirm(`Are you sure you want to ${actionText} this leave request?`);
+            if (!confirmed) {
+                e.preventDefault();
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

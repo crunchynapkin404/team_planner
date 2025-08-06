@@ -14,6 +14,7 @@ import UserManagement from './pages/UserManagement';
 import TeamManagement from './pages/TeamManagement';
 import ProfileManagement from './pages/ProfileManagement';
 import ShiftSwapsPage from './pages/ShiftSwapsPage';
+import LeaveRequestPage from './pages/LeaveRequestPage';
 
 function App() {
   const isAuthenticated = apiClient.isAuthenticated();
@@ -177,7 +178,7 @@ function App() {
         element={
           <PrivateRoute>
             <MainLayout>
-              <div>Leave Requests page coming soon...</div>
+              <LeaveRequestPage />
             </MainLayout>
           </PrivateRoute>
         }

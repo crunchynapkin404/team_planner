@@ -99,6 +99,26 @@ export interface Activity {
   related_object_id?: number;
 }
 
+export interface BulkSwapRequest {
+  shifts: {
+    requesting_shift_id: number;
+    target_employee_id: number;
+    target_shift_id?: number;
+  }[];
+  reason: string;
+  swap_type: 'with_specific_shifts' | 'any_available' | 'schedule_takeover';
+}
+
+export interface BulkSwapResponse {
+  success: boolean;
+  created_requests: number[];
+  failed_requests: {
+    requesting_shift_id: number;
+    error: string;
+  }[];
+  message: string;
+}
+
 export const userService = {
   getCurrentUser: async (): Promise<User> => {
     return apiClient.get('/api/users/me/');
@@ -134,6 +154,10 @@ export const userService = {
     reason: string;
   }): Promise<{ message: string; swap_request_id: number }> => {
     return apiClient.post('/shifts/api/swap-requests/create/', data);
+  },
+
+  createBulkSwapRequest: async (data: BulkSwapRequest): Promise<BulkSwapResponse> => {
+    return apiClient.post('/shifts/api/swap-requests/bulk-create/', data);
   },
 
   getUserShifts: async (): Promise<UserShift[]> => {

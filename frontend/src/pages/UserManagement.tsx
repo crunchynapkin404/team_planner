@@ -38,6 +38,7 @@ import {
   Visibility,
   Block,
 } from '@mui/icons-material';
+import { formatDate } from '../utils/dateUtils';
 import { useNavigate } from 'react-router-dom';
 
 interface User {
@@ -405,7 +406,7 @@ const UserManagement: React.FC = () => {
                   </TableCell>
                   <TableCell>
                     {user.last_login 
-                      ? new Date(user.last_login).toLocaleDateString()
+                      ? formatDate(new Date(user.last_login))
                       : 'Never'
                     }
                   </TableCell>

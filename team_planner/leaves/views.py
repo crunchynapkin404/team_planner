@@ -9,6 +9,7 @@ from django.views.decorators.http import require_http_methods, require_POST
 from django.views.generic import ListView, DetailView, CreateView, UpdateView
 
 from .models import LeaveRequest, LeaveType
+from .forms import LeaveRequestForm, LeaveRequestSearchForm, LeaveRequestResponseForm
 from team_planner.shifts.models import SwapRequest
 
 
@@ -24,16 +25,45 @@ class LeaveRequestListView(ListView):
         
         if user.is_superuser:
             # Admins see all requests
-            return LeaveRequest.objects.select_related(
+            queryset = LeaveRequest.objects.select_related(
                 "employee", "leave_type", "approved_by"
             ).order_by("-created")
         else:
             # Regular users see their own requests
-            return LeaveRequest.objects.filter(
+            queryset = LeaveRequest.objects.filter(
                 employee=user
             ).select_related(
                 "employee", "leave_type", "approved_by"
             ).order_by("-created")
+        
+        # Apply search filters
+        form = LeaveRequestSearchForm(self.request.GET, user=user)
+        if form.is_valid():
+            if form.cleaned_data.get("employee"):
+                queryset = queryset.filter(employee=form.cleaned_data["employee"])
+            if form.cleaned_data.get("leave_type"):
+                queryset = queryset.filter(leave_type=form.cleaned_data["leave_type"])
+            if form.cleaned_data.get("status"):
+                queryset = queryset.filter(status=form.cleaned_data["status"])
+            if form.cleaned_data.get("start_date_from"):
+                queryset = queryset.filter(start_date__gte=form.cleaned_data["start_date_from"])
+            if form.cleaned_data.get("start_date_to"):
+                queryset = queryset.filter(start_date__lte=form.cleaned_data["start_date_to"])
+        
+        return queryset
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["search_form"] = LeaveRequestSearchForm(self.request.GET, user=self.request.user)
+        
+        # Add summary statistics
+        queryset = self.get_queryset()
+        context["total_requests"] = queryset.count()
+        context["pending_count"] = queryset.filter(status=LeaveRequest.Status.PENDING).count()
+        context["approved_count"] = queryset.filter(status=LeaveRequest.Status.APPROVED).count()
+        context["with_conflicts_count"] = len([req for req in queryset if req.has_shift_conflicts])
+        
+        return context
 
 
 class LeaveRequestDetailView(DetailView):
@@ -68,13 +98,90 @@ class LeaveRequestDetailView(DetailView):
 @require_http_methods(["GET", "POST"])
 def create_leave_request(request):
     """Create a new leave request."""
-    # Simplified form creation for now - will enhance later
     if request.method == "POST":
-        # Basic form processing - we'll add proper form later
-        messages.success(request, "Leave request functionality will be enhanced in Phase 4")
-        return redirect("leaves:leave_request_list")
+        form = LeaveRequestForm(request.POST, user=request.user)
+        if form.is_valid():
+            leave_request = form.save()
+            messages.success(
+                request, 
+                f"Leave request submitted successfully! Reference: #{leave_request.pk}"
+            )
+            
+            # Check for conflicts and add warning if needed
+            if leave_request.has_shift_conflicts:
+                messages.warning(
+                    request,
+                    "Your leave request has shift conflicts that need to be resolved before approval. "
+                    "Consider creating swap requests for the conflicting shifts."
+                )
+            
+            return redirect("leaves:leave_request_detail", pk=leave_request.pk)
+    else:
+        form = LeaveRequestForm(user=request.user)
     
-    return render(request, "leaves/create_leave_request.html", {})
+    context = {
+        "form": form,
+        "leave_types": LeaveType.objects.filter(is_active=True).order_by("name"),
+    }
+    
+    return render(request, "leaves/create_leave_request.html", context)
+
+
+@login_required
+@permission_required("leaves.change_leaverequest", raise_exception=True)
+@require_http_methods(["GET", "POST"])
+def respond_to_leave_request(request, pk):
+    """Respond to a leave request with approval/rejection form."""
+    leave_request = get_object_or_404(LeaveRequest, pk=pk)
+    
+    if leave_request.status != LeaveRequest.Status.PENDING:
+        messages.error(request, "Leave request is not in pending status.")
+        return redirect("leaves:leave_request_detail", pk=pk)
+    
+    if request.method == "POST":
+        form = LeaveRequestResponseForm(request.POST, instance=leave_request)
+        if form.is_valid():
+            action = form.cleaned_data["action"]
+            rejection_reason = form.cleaned_data.get("rejection_reason", "")
+            
+            if action == "approve":
+                # Check if leave can be approved (no unresolved shift conflicts)
+                if not leave_request.can_be_approved():
+                    messages.error(
+                        request,
+                        "Cannot approve leave request. There are unresolved shift conflicts. "
+                        "All conflicting shifts must have approved swap requests."
+                    )
+                    return redirect("leaves:respond_to_leave_request", pk=pk)
+                
+                leave_request.status = LeaveRequest.Status.APPROVED
+                leave_request.approved_by = request.user
+                leave_request.approved_at = timezone.now()
+                leave_request.save()
+                messages.success(request, "Leave request approved successfully!")
+                
+            elif action == "reject":
+                leave_request.status = LeaveRequest.Status.REJECTED
+                leave_request.approved_by = request.user
+                leave_request.approved_at = timezone.now()
+                leave_request.rejection_reason = rejection_reason
+                leave_request.save()
+                messages.success(request, "Leave request rejected.")
+            
+            return redirect("leaves:leave_request_detail", pk=pk)
+    else:
+        form = LeaveRequestResponseForm(instance=leave_request)
+    
+    context = {
+        "form": form,
+        "leave_request": leave_request,
+        "conflicting_shifts": leave_request.get_conflicting_shifts(),
+        "suggested_employees": leave_request.get_suggested_swap_employees(),
+        "can_be_approved": leave_request.can_be_approved(),
+        "blocking_message": leave_request.get_blocking_message(),
+    }
+    
+    return render(request, "leaves/respond_to_leave_request.html", context)
 
 
 @login_required

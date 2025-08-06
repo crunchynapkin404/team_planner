@@ -14,7 +14,7 @@
                     <div class="row">
                         <div class="col-md-6">
                             <h5>Request Information</h5>
-                            <p><strong>Employee:</strong> {{ leave_request.employee.user.get_full_name }}</p>
+                            <p><strong>Employee:</strong> {{ leave_request.employee.get_full_name|default:leave_request.employee.username }}</p>
                             <p><strong>Start Date:</strong> {{ leave_request.start_date }}</p>
                             <p><strong>End Date:</strong> {{ leave_request.end_date }}</p>
                             <p><strong>Type:</strong> {{ leave_request.get_leave_type_display }}</p>
@@ -66,10 +66,38 @@
 
                     <div class="form-actions">
                         {% if leave_request.status == 'pending' %}
-                            <a href="{% url 'leaves:approve_leave_request' leave_request.pk %}" class="btn btn-success">Approve</a>
-                            <a href="{% url 'leaves:reject_leave_request' leave_request.pk %}" class="btn btn-danger">Reject</a>
+                            {% if perms.leaves.change_leaverequest %}
+                                <a href="{% url 'leaves:respond_to_leave_request' leave_request.pk %}" class="btn btn-primary">
+                                    <i class="fas fa-clipboard-check me-1"></i>
+                                    Review & Respond
+                                </a>
+                                <a href="{% url 'leaves:approve_leave_request' leave_request.pk %}" 
+                                   class="btn btn-success"
+                                   onclick="return confirm('Are you sure you want to approve this leave request?')"
+                                   {% if not can_be_approved %}disabled title="Cannot approve with unresolved conflicts"{% endif %}>
+                                    <i class="fas fa-check me-1"></i>
+                                    Quick Approve
+                                </a>
+                                <a href="{% url 'leaves:reject_leave_request' leave_request.pk %}" 
+                                   class="btn btn-danger"
+                                   onclick="return confirm('Are you sure you want to reject this leave request?')">
+                                    <i class="fas fa-times me-1"></i>
+                                    Quick Reject
+                                </a>
+                            {% endif %}
+                            {% if leave_request.employee == user %}
+                                <a href="{% url 'leaves:cancel_leave_request' leave_request.pk %}" 
+                                   class="btn btn-warning"
+                                   onclick="return confirm('Are you sure you want to cancel this leave request?')">
+                                    <i class="fas fa-ban me-1"></i>
+                                    Cancel Request
+                                </a>
+                            {% endif %}
                         {% endif %}
-                        <a href="{% url 'leaves:leave_request_list' %}" class="btn btn-secondary">Back to List</a>
+                        <a href="{% url 'leaves:leave_request_list' %}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left me-1"></i>
+                            Back to List
+                        </a>
                     </div>
                 </div>
             </div>

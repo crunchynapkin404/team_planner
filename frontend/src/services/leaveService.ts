@@ -1,0 +1,230 @@
+import { apiClient } from './apiClient';
+import { formatDate } from '../utils/dateUtils';
+
+export interface LeaveType {
+  id: number;
+  name: string;
+  description: string;
+  color: string;
+  default_days_per_year?: number;
+  requires_approval: boolean;
+  is_paid: boolean;
+  is_active: boolean;
+}
+
+export interface Employee {
+  id: number;
+  username: string;
+  first_name: string;
+  last_name: string;
+  display_name: string;
+  available_incidents?: boolean;
+  available_waakdienst?: boolean;
+}
+
+export interface ConflictingShift {
+  id: number;
+  start_datetime: string;
+  end_datetime: string;
+  shift_type: string;
+  shift_name: string;
+  status: string;
+  duration_hours: number;
+  notes: string;
+}
+
+export interface ConflictingShiftsResponse {
+  leave_request_id: number;
+  conflicts_count: number;
+  conflicting_shifts: ConflictingShift[];
+}
+
+export interface LeaveRequest {
+  id: number;
+  employee: Employee;
+  leave_type: LeaveType;
+  start_date: string;
+  end_date: string;
+  days_requested: number;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  status_display: string;
+  has_shift_conflicts: boolean;
+  can_be_approved: boolean;
+  blocking_message?: string;
+  approved_by?: Employee;
+  approved_at?: string;
+  rejection_reason?: string;
+  created: string;
+  modified: string;
+  conflicting_shifts?: ConflictingShift[];
+  suggested_employees?: Employee[];
+}
+
+export interface LeaveRequestsResponse {
+  results: LeaveRequest[];
+  count: number;
+  total_pages: number;
+  current_page: number;
+  has_next: boolean;
+  has_previous: boolean;
+}
+
+export interface CreateLeaveRequestData {
+  leave_type_id: number;
+  start_date: string;
+  end_date: string;
+  days_requested: number;
+  reason: string;
+}
+
+export interface CreateLeaveRequestResponse {
+  id: number;
+  message: string;
+  has_conflicts: boolean;
+  conflict_warning?: string;
+}
+
+export interface ConflictCheckResponse {
+  conflicts: ConflictingShift[];
+  suggestions: Employee[];
+  has_conflicts: boolean;
+  message?: string;
+}
+
+export interface LeaveStats {
+  total_requests: number;
+  pending_requests: number;
+  approved_requests: number;
+  rejected_requests: number;
+  days_used_this_year: number;
+  current_year: number;
+}
+
+export interface LeaveRequestFilters {
+  employee_id?: number;
+  leave_type_id?: number;
+  status?: string;
+  start_date_from?: string;
+  start_date_to?: string;
+  search?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export const leaveService = {
+  // Get leave requests with filters and pagination
+  getLeaveRequests: async (filters: LeaveRequestFilters = {}): Promise<LeaveRequestsResponse> => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        params.append(key, value.toString());
+      }
+    });
+    
+    return apiClient.get(`/api/leaves/requests/?${params.toString()}`);
+  },
+
+  // Get a specific leave request with full details
+  getLeaveRequest: async (id: number): Promise<LeaveRequest> => {
+    return apiClient.get(`/api/leaves/requests/${id}/`);
+  },
+
+  // Create a new leave request
+  createLeaveRequest: async (data: CreateLeaveRequestData): Promise<CreateLeaveRequestResponse> => {
+    return apiClient.post('/api/leaves/requests/create/', data);
+  },
+
+  // Approve a leave request
+  approveLeaveRequest: async (id: number): Promise<{ message: string; status: string }> => {
+    return apiClient.post(`/api/leaves/requests/${id}/approve/`);
+  },
+
+  // Reject a leave request
+  rejectLeaveRequest: async (id: number, rejectionReason: string): Promise<{ message: string; status: string }> => {
+    return apiClient.post(`/api/leaves/requests/${id}/reject/`, {
+      rejection_reason: rejectionReason,
+    });
+  },
+
+  // Cancel a leave request
+  cancelLeaveRequest: async (id: number): Promise<{ message: string; status: string }> => {
+    return apiClient.post(`/api/leaves/requests/${id}/cancel/`);
+  },
+
+  // Get available leave types
+  getLeaveTypes: async (): Promise<LeaveType[]> => {
+    const response = await apiClient.get('/api/leaves/leave-types/') as any;
+    // Handle paginated response format
+    return response.results || response;
+  },
+
+  // Get conflicting shifts for a leave request
+  getConflictingShifts: async (leaveRequestId: number): Promise<ConflictingShiftsResponse> => {
+    return apiClient.get(`/api/leaves/requests/${leaveRequestId}/conflicting-shifts/`);
+  },
+
+  // Check for conflicts when creating a leave request
+  checkConflicts: async (startDate: string, endDate: string): Promise<ConflictCheckResponse> => {
+    return apiClient.get(`/api/leaves/requests/check_conflicts/?start_date=${startDate}&end_date=${endDate}`);
+  },
+
+  // Get user's leave statistics
+  getUserStats: async (): Promise<LeaveStats> => {
+    return apiClient.get('/api/leaves/requests/user_stats/');
+  },
+
+  // Helper methods
+  getStatusColor: (status: string): string => {
+    switch (status) {
+      case 'pending':
+        return '#ffc107'; // warning yellow
+      case 'approved':
+        return '#28a745'; // success green
+      case 'rejected':
+        return '#dc3545'; // danger red
+      case 'cancelled':
+        return '#6c757d'; // secondary gray
+      default:
+        return '#007bff'; // primary blue
+    }
+  },
+
+  getStatusIcon: (status: string): string => {
+    switch (status) {
+      case 'pending':
+        return 'schedule';
+      case 'approved':
+        return 'check_circle';
+      case 'rejected':
+        return 'cancel';
+      case 'cancelled':
+        return 'block';
+      default:
+        return 'help';
+    }
+  },
+
+  formatDateRange: (startDate: string, endDate: string): string => {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    if (start.toDateString() === end.toDateString()) {
+      return formatDate(start);
+    }
+    
+    if (start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth()) {
+      return `${start.getDate()} - ${end.getDate()}/${(start.getMonth() + 1).toString().padStart(2, '0')}/${start.getFullYear()}`;
+    }
+    
+    return `${formatDate(start)} - ${formatDate(end)}`;
+  },
+
+  calculateDays: (startDate: string, endDate: string): number => {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const diffTime = Math.abs(end.getTime() - start.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 to include both start and end dates
+    return diffDays;
+  },
+};
