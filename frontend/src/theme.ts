@@ -65,12 +65,15 @@ const theme = createTheme({
       styleOverrides: {
         html: {
           height: '100%',
+          overflow: 'auto',
         },
         body: {
           height: '100%',
+          overflow: 'auto',
         },
         '#root': {
           height: '100%',
+          overflow: 'auto',
         },
       },
     },

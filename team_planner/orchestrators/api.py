@@ -288,25 +288,192 @@ def orchestrator_status_api(request):
             available_for_waakdienst=True
         ).count()
         
-        recent_runs = OrchestrationRun.objects.order_by('-started_at')[:5]
+        # Get orchestration statistics
+        total_runs = OrchestrationRun.objects.count()
+        successful_runs = OrchestrationRun.objects.filter(status=OrchestrationRun.Status.COMPLETED).count()
+        success_rate = (successful_runs / total_runs * 100) if total_runs > 0 else 0
+        active_runs = OrchestrationRun.objects.filter(status=OrchestrationRun.Status.RUNNING).count()
+        
+        recent_runs = OrchestrationRun.objects.order_by('-started_at')[:10]
         recent_runs_data = []
         for run in recent_runs:
+            duration = None
+            if run.started_at and run.completed_at:
+                duration = (run.completed_at - run.started_at).total_seconds() * 1000  # milliseconds
+            
             recent_runs_data.append({
                 'id': run.pk,
                 'name': run.name,
                 'status': run.status,
                 'start_date': run.start_date.isoformat(),
                 'end_date': run.end_date.isoformat(),
-                'total_shifts': run.total_shifts_created,
-                'created_at': run.started_at.isoformat()
+                'total_shifts': run.total_shifts_created or 0,
+                'incidents_shifts': run.incidents_shifts_created or 0,
+                'waakdienst_shifts': run.waakdienst_shifts_created or 0,
+                'created_at': run.started_at.isoformat() if run.started_at else None,
+                'completed_at': run.completed_at.isoformat() if run.completed_at else None,
+                'initiated_by': run.initiated_by.get_full_name() or run.initiated_by.username,
+                'description': run.description,
+                'duration': duration,
+                'error_message': run.error_message
             })
         
         return Response({
             'eligible_incidents': eligible_incidents,
             'eligible_waakdienst': eligible_waakdienst,
             'recent_runs': recent_runs_data,
-            'system_status': 'operational'
+            'system_status': 'operational',
+            'total_runs': total_runs,
+            'active_runs': active_runs,
+            'success_rate': success_rate
         })
         
     except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def fairness_api(request):
+    """API endpoint for fairness dashboard data."""
+    if not request.user.is_authenticated:
+        return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    try:
+        # Get parameters
+        time_range = request.GET.get('time_range', 'current_year')
+        employee_id = request.GET.get('employee', 'all')
+        
+        # Calculate date range
+        today = timezone.now().date()
+        if time_range == 'current_year':
+            start_date = today.replace(month=1, day=1)
+            end_date = today.replace(month=12, day=31)
+        elif time_range == 'last_6_months':
+            start_date = today - timedelta(days=180)
+            end_date = today
+        elif time_range == 'last_3_months':
+            start_date = today - timedelta(days=90)
+            end_date = today
+        else:  # all_time
+            start_date = date(2020, 1, 1)  # Far back default
+            end_date = today
+        
+        # Convert to datetime
+        start_datetime = timezone.make_aware(datetime.combine(start_date, datetime.min.time()))
+        end_datetime = timezone.make_aware(datetime.combine(end_date, datetime.max.time()))
+        
+        calculator = FairnessCalculator(start_datetime, end_datetime)
+        
+        # Get active employees
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        
+        employees_query = User.objects.filter(
+            is_active=True,
+            employee_profile__status='active'
+        ).select_related('employee_profile')
+        
+        if employee_id != 'all':
+            employees_query = employees_query.filter(id=employee_id)
+        
+        active_employees = list(employees_query)
+        
+        # Calculate assignments and fairness
+        assignments = calculator.calculate_current_assignments(active_employees)
+        fairness_scores = calculator.calculate_fairness_score(assignments)
+        
+        # Prepare employee data
+        employee_data = []
+        fairness_distribution = {'excellent': 0, 'good': 0, 'fair': 0, 'poor': 0}
+        
+        for employee in active_employees:
+            emp_assignments = assignments.get(employee.pk, {'incidents': 0, 'waakdienst': 0})
+            fairness_score = fairness_scores.get(employee.pk, 0)
+            
+            # Get last assignment date
+            last_assignment = OrchestrationResult.objects.filter(
+                employee=employee,
+                is_applied=True
+            ).order_by('-applied_at').first()
+            
+            # Get employee profile safely
+            profile = getattr(employee, 'employee_profile', None)
+            if profile:
+                available_incidents = profile.available_for_incidents
+                available_waakdienst = profile.available_for_waakdienst
+            else:
+                available_incidents = False
+                available_waakdienst = False
+            
+            employee_data.append({
+                'employee_id': employee.pk,
+                'employee_name': employee.get_full_name() or employee.username,
+                'incidents_count': emp_assignments['incidents'],
+                'waakdienst_count': emp_assignments['waakdienst'],
+                'total_assignments': emp_assignments['incidents'] + emp_assignments['waakdienst'],
+                'fairness_score': fairness_score,
+                'available_incidents': available_incidents,
+                'available_waakdienst': available_waakdienst,
+                'last_assignment_date': last_assignment.applied_at.date().isoformat() if last_assignment and last_assignment.applied_at else None
+            })
+            
+            # Categorize fairness
+            if fairness_score >= 90:
+                fairness_distribution['excellent'] += 1
+            elif fairness_score >= 70:
+                fairness_distribution['good'] += 1
+            elif fairness_score >= 50:
+                fairness_distribution['fair'] += 1
+            else:
+                fairness_distribution['poor'] += 1
+        
+        # Sort by fairness score (lowest first - needs most attention)
+        employee_data.sort(key=lambda x: x['fairness_score'])
+        
+        # Calculate metrics
+        total_employees = len(employee_data)
+        avg_incidents = sum(d['incidents_count'] for d in employee_data) / total_employees if total_employees > 0 else 0
+        avg_waakdienst = sum(d['waakdienst_count'] for d in employee_data) / total_employees if total_employees > 0 else 0
+        avg_total = sum(d['total_assignments'] for d in employee_data) / total_employees if total_employees > 0 else 0
+        
+        # Get historical data (simplified - last 12 months by month)
+        historical_data = []
+        if employee_id != 'all' and active_employees:
+            # Get monthly fairness for specific employee
+            employee = active_employees[0]
+            for i in range(12):
+                month_date = today.replace(day=1) - timedelta(days=30*i)
+                month_start = timezone.make_aware(datetime.combine(month_date.replace(day=1), datetime.min.time()))
+                month_end = timezone.make_aware(datetime.combine(
+                    (month_date.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1),
+                    datetime.max.time()
+                ))
+                
+                month_calculator = FairnessCalculator(month_start, month_end)
+                month_assignments = month_calculator.calculate_current_assignments([employee])
+                month_fairness = month_calculator.calculate_fairness_score(month_assignments)
+                
+                historical_data.append({
+                    'date': month_date.strftime('%Y-%m'),
+                    'employee_name': employee.get_full_name() or employee.username,
+                    'fairness_score': month_fairness.get(employee.pk, 0)
+                })
+            
+            historical_data.reverse()  # Chronological order
+        
+        return Response({
+            'employees': employee_data,
+            'metrics': {
+                'total_employees': total_employees,
+                'average_incidents': avg_incidents,
+                'average_waakdienst': avg_waakdienst,
+                'average_total': avg_total,
+                'fairness_distribution': fairness_distribution,
+            },
+            'historical': historical_data,
+            'time_range': time_range,
+        })
+        
+    except Exception as e:
+        logger.error(f"Fairness API error: {str(e)}", exc_info=True)
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

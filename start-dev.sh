@@ -26,6 +26,19 @@ trap cleanup SIGINT SIGTERM
 # Start Django backend
 echo -e "${GREEN}Starting Django backend...${NC}"
 cd "$(dirname "$0")"
+
+# Activate virtual environment if it exists
+if [ -d ".venv" ]; then
+    echo -e "${YELLOW}Activating virtual environment...${NC}"
+    source .venv/bin/activate
+fi
+
+# Load environment variables
+if [ -f ".envs/.local/.django" ]; then
+    echo -e "${YELLOW}Loading Django environment variables...${NC}"
+    export $(cat .envs/.local/.django | grep -v '^#' | xargs)
+fi
+
 python manage.py runserver 8000 &
 DJANGO_PID=$!
 

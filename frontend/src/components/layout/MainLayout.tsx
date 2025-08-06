@@ -11,15 +11,17 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       <TopNavigation />
-      <Box sx={{ display: 'flex', flex: 1 }}>
+      <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         <SideNavigation />
         <Box
           component="main"
           sx={{
             flexGrow: 1,
-            p: 3,
             backgroundColor: 'background.default',
             overflow: 'auto',
+            height: 'calc(100vh - 64px)', // Account for top navigation height
+            maxHeight: 'calc(100vh - 64px)',
+            p: 3,
           }}
         >
           {children}

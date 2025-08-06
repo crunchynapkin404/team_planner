@@ -6,7 +6,7 @@ class ApiClient {
 
   constructor() {
     this.client = axios.create({
-      baseURL: 'http://localhost:8000/api',
+      baseURL: 'http://localhost:8000',
       timeout: 10000,
       headers: {
         'Content-Type': 'application/json',
@@ -77,7 +77,7 @@ class ApiClient {
 
   // Authentication methods
   async login(username: string, password: string): Promise<{ token: string }> {
-    const response = await this.post<{ token: string }>('/auth-token/', {
+    const response = await this.post<{ token: string }>('/api/auth-token/', {
       username,
       password,
     });
@@ -90,14 +90,14 @@ class ApiClient {
 
   async logout(): Promise<void> {
     try {
-      await this.post('/auth/logout/');
+      await this.post('/api/auth/logout/');
     } finally {
       localStorage.removeItem('token');
     }
   }
 
   async getCurrentUser(): Promise<any> {
-    return this.get('/users/me/');
+    return this.get('/api/users/me/');
   }
 
   // Helper to check if user is authenticated

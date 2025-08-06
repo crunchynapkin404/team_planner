@@ -1,19 +1,22 @@
-from django.contrib import messages
-from django.contrib.auth import get_user_model
+from datetime import datetime, timedelta
+from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required, permission_required
-from django.core.paginator import Paginator
-from django.db import transaction
-from django.db.models import Q
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.contrib import messages
 from django.http import JsonResponse, HttpResponseForbidden
-from django.shortcuts import render, get_object_or_404, redirect
-from django.urls import reverse_lazy
-from django.utils import timezone
-from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_http_methods, require_POST
-from django.views.generic import ListView, DetailView, CreateView, UpdateView
+from django.views.generic import ListView, DetailView
+from django.utils import timezone
+from django.db.models import Q
+from django.contrib.auth import get_user_model
+from datetime import date
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+import json
 
-from .models import Shift, SwapRequest
-from .forms import SwapRequestForm, SwapRequestResponseForm, ShiftSearchForm, BulkSwapApprovalForm
+from .models import Shift, ShiftTemplate, ShiftType, SwapRequest
+from .forms import SwapRequestForm, ShiftSearchForm, BulkSwapApprovalForm
+from team_planner.employees.models import EmployeeProfile
 
 User = get_user_model()
 
@@ -255,7 +258,7 @@ def get_target_shifts_ajax(request):
         shift_data = [
             {
                 "id": shift.pk,
-                "display": f"{shift.template.get_shift_type_display()} - {shift.start_datetime.strftime('%Y-%m-%d %H:%M')}",
+                "display": f"{shift.template.shift_type.title()} - {shift.start_datetime.strftime('%Y-%m-%d %H:%M')}",
                 "start_date": shift.start_datetime.isoformat(),
                 "end_date": shift.end_datetime.isoformat(),
                 "shift_type": shift.template.shift_type,
@@ -303,6 +306,104 @@ def shifts_api(request):
         events.append(event)
     
     return JsonResponse({'events': events})
+
+
+@require_http_methods(["GET"])
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dashboard_api(request):
+    """API endpoint to get dashboard data for today's shifts."""
+    from django.contrib.auth import get_user_model
+    from team_planner.leaves.models import LeaveRequest
+    from team_planner.teams.models import TeamMembership
+    
+    User = get_user_model()
+    today = timezone.now().date()
+    start_of_day = timezone.make_aware(datetime.combine(today, datetime.min.time()))
+    end_of_day = timezone.make_aware(datetime.combine(today, datetime.max.time()))
+    
+    # Get the requesting user's teams
+    user_teams = TeamMembership.objects.filter(
+        user=request.user,
+        is_active=True
+    ).values_list('team_id', flat=True)
+    
+    # If user is not in any teams, fall back to showing all engineers
+    if not user_teams:
+        team_member_ids = User.objects.filter(is_active=True).values_list('id', flat=True)
+    else:
+        # Get all team members from the user's teams
+        team_member_ids = TeamMembership.objects.filter(
+            team_id__in=user_teams,
+            is_active=True
+        ).values_list('user_id', flat=True)
+    
+    # Get today's shifts for team members only
+    today_shifts = Shift.objects.filter(
+        start_datetime__lte=end_of_day,
+        end_datetime__gte=start_of_day,
+        status__in=['scheduled', 'confirmed', 'in_progress'],
+        assigned_employee_id__in=team_member_ids
+    ).select_related('template', 'assigned_employee').order_by('start_datetime')
+    
+    # Get total active engineers from the user's teams
+    total_engineers = User.objects.filter(
+        id__in=team_member_ids,
+        is_active=True
+    ).count()
+    
+    # Get engineers on leave today from the user's teams
+    engineers_on_leave_today = LeaveRequest.objects.filter(
+        status='approved',
+        start_date__lte=today,
+        end_date__gte=today,
+        employee_id__in=team_member_ids
+    ).values_list('employee_id', flat=True).distinct()
+    
+    engineers_on_leave_count = len(engineers_on_leave_today)
+    
+    # Calculate available engineers (total - on leave)
+    available_engineers = total_engineers - engineers_on_leave_count
+    
+    # Initialize result structure
+    dashboard_data = {
+        'incident_engineer': None,
+        'incident_standby_engineer': None,
+        'waakdienst_engineer': None,
+        'engineers_working': [],
+        'engineers_working_count': 0,
+        'total_engineers': total_engineers,
+        'available_engineers': available_engineers,
+        'engineers_on_leave': engineers_on_leave_count
+    }
+    
+    # Process shifts to find today's engineers
+    engineers_working = set()
+    engineers_working_list = []
+    
+    for shift in today_shifts:
+        engineer_data = {
+            'id': shift.assigned_employee.pk,
+            'name': shift.assigned_employee.name or shift.assigned_employee.username,
+            'username': shift.assigned_employee.username
+        }
+        
+        if shift.template.shift_type == ShiftType.INCIDENTS:
+            dashboard_data['incident_engineer'] = engineer_data
+        elif shift.template.shift_type == ShiftType.INCIDENTS_STANDBY:
+            dashboard_data['incident_standby_engineer'] = engineer_data
+        elif shift.template.shift_type == ShiftType.WAAKDIENST:
+            dashboard_data['waakdienst_engineer'] = engineer_data
+        
+        # Add to engineers working set and list
+        engineers_working.add(shift.assigned_employee.pk)
+        if engineer_data not in engineers_working_list:
+            engineers_working_list.append(engineer_data)
+    
+    dashboard_data['engineers_working'] = engineers_working_list
+    dashboard_data['engineers_working_count'] = len(engineers_working)
+    
+    return JsonResponse(dashboard_data)
 
 
 def _can_respond_to_swap(user, swap_request):

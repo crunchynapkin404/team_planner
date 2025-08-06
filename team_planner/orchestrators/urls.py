@@ -16,6 +16,7 @@ urlpatterns = [
     path('api/create/', api.orchestrator_create_api, name='create_api'),
     path('api/apply-preview/', api.orchestrator_apply_preview_api, name='apply_preview_api'),
     path('api/status/', api.orchestrator_status_api, name='status_api'),
+    path('api/fairness/', api.fairness_api, name='fairness_api'),
     
     # Preview system (placeholder views for now)
     # path('preview/', views.preview_view, name='preview'),

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Drawer,
   List,
@@ -6,49 +6,66 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
-  Divider,
-  Typography,
   Box,
+  Typography,
+  Divider,
+  CircularProgress,
 } from '@mui/material';
-import {
-  Dashboard,
-  People,
-  CalendarMonth,
-  Timeline,
-  SwapHoriz,
-  BeachAccess,
-  Settings,
-  PlayCircle,
-} from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { navigationService, NavigationItem } from '../../services/navigationService';
+import { userService } from '../../services/userService';
 
 const drawerWidth = 240;
-
-interface NavigationItem {
-  text: string;
-  icon: React.ReactElement;
-  path: string;
-  divider?: boolean;
-}
-
-const navigationItems: NavigationItem[] = [
-  { text: 'Dashboard', icon: <Dashboard />, path: '/dashboard' },
-  { text: 'Calendar', icon: <CalendarMonth />, path: '/calendar' },
-  { text: 'Timeline', icon: <Timeline />, path: '/timeline' },
-  { text: 'Orchestrator', icon: <PlayCircle />, path: '/orchestrator' },
-  { text: 'Employees', icon: <People />, path: '/employees' },
-  { text: 'Shift Swaps', icon: <SwapHoriz />, path: '/swaps' },
-  { text: 'Leave Requests', icon: <BeachAccess />, path: '/leaves' },
-  { text: 'Settings', icon: <Settings />, path: '/settings', divider: true },
-];
 
 const SideNavigation: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const [navigationItems, setNavigationItems] = useState<NavigationItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchUserAndNavigation = async () => {
+      try {
+        const currentUser = await userService.getCurrentUser();
+        const items = navigationService.getNavigationItems(currentUser);
+        setNavigationItems(items);
+      } catch (error) {
+        console.error('Failed to fetch user data:', error);
+        // Set minimal navigation for unauthenticated users
+        const items = navigationService.getNavigationItems(null);
+        setNavigationItems(items);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUserAndNavigation();
+  }, []);
 
   const handleNavigation = (path: string) => {
     navigate(path);
   };
+
+  if (loading) {
+    return (
+      <Drawer
+        variant="permanent"
+        sx={{
+          width: drawerWidth,
+          flexShrink: 0,
+          '& .MuiDrawer-paper': {
+            width: drawerWidth,
+            boxSizing: 'border-box',
+            top: '64px',
+          },
+        }}
+      >
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '200px' }}>
+          <CircularProgress />
+        </Box>
+      </Drawer>
+    );
+  }
 
   return (
     <Drawer
@@ -91,7 +108,7 @@ const SideNavigation: React.FC = () => {
                     color: location.pathname === item.path ? 'primary.main' : 'inherit',
                   }}
                 >
-                  {item.icon}
+                  {navigationService.getIcon(item.iconName)}
                 </ListItemIcon>
                 <ListItemText
                   primary={item.text}

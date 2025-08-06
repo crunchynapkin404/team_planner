@@ -103,7 +103,7 @@ const CalendarPage: React.FC = () => {
   };
 
   return (
-    <Box sx={{ width: '100%', height: '100%', py: 4, px: 3 }}>
+    <Box sx={{ width: '100%', minHeight: '100%' }}>
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {error}

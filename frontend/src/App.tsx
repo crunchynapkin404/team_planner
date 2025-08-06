@@ -8,6 +8,12 @@ import Dashboard from './pages/Dashboard';
 import CalendarPage from './pages/CalendarPage';
 import TimelinePage from './pages/TimelinePage';
 import OrchestratorPage from './pages/OrchestratorPage';
+import FairnessDashboard from './pages/FairnessDashboard';
+import OrchestratorHistory from './pages/OrchestratorHistory';
+import UserManagement from './pages/UserManagement';
+import TeamManagement from './pages/TeamManagement';
+import ProfileManagement from './pages/ProfileManagement';
+import ShiftSwapsPage from './pages/ShiftSwapsPage';
 
 function App() {
   const isAuthenticated = apiClient.isAuthenticated();
@@ -44,7 +50,51 @@ function App() {
         element={
           <PrivateRoute>
             <MainLayout>
-              <div>Employees page coming soon...</div>
+              <UserManagement />
+            </MainLayout>
+          </PrivateRoute>
+        }
+      />
+      
+      <Route
+        path="/user-management"
+        element={
+          <PrivateRoute>
+            <MainLayout>
+              <UserManagement />
+            </MainLayout>
+          </PrivateRoute>
+        }
+      />
+      
+      <Route
+        path="/team-management"
+        element={
+          <PrivateRoute>
+            <MainLayout>
+              <TeamManagement />
+            </MainLayout>
+          </PrivateRoute>
+        }
+      />
+      
+      <Route
+        path="/teams"
+        element={
+          <PrivateRoute>
+            <MainLayout>
+              <TeamManagement />
+            </MainLayout>
+          </PrivateRoute>
+        }
+      />
+      
+      <Route
+        path="/profile"
+        element={
+          <PrivateRoute>
+            <MainLayout>
+              <ProfileManagement />
             </MainLayout>
           </PrivateRoute>
         }
@@ -83,6 +133,28 @@ function App() {
         }
       />
       
+      <Route
+        path="/fairness"
+        element={
+          <PrivateRoute>
+            <MainLayout>
+              <FairnessDashboard />
+            </MainLayout>
+          </PrivateRoute>
+        }
+      />
+      
+      <Route
+        path="/orchestrator-history"
+        element={
+          <PrivateRoute>
+            <MainLayout>
+              <OrchestratorHistory />
+            </MainLayout>
+          </PrivateRoute>
+        }
+      />
+      
       {/* Redirect old schedules route to calendar */}
       <Route
         path="/schedules"
@@ -94,7 +166,7 @@ function App() {
         element={
           <PrivateRoute>
             <MainLayout>
-              <div>Shift Swaps page coming soon...</div>
+              <ShiftSwapsPage />
             </MainLayout>
           </PrivateRoute>
         }

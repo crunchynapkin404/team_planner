@@ -16,6 +16,23 @@ class User(AbstractUser):
     first_name = None  # type: ignore[assignment]
     last_name = None  # type: ignore[assignment]
 
+    @property
+    def display_name(self) -> str:
+        """Get the display name for the user."""
+        return self.name.strip() if self.name else self.username
+    
+    @property
+    def first_name_display(self) -> str:
+        """Get first name for compatibility with frontend."""
+        parts = self.name.split() if self.name else []
+        return parts[0] if parts else ""
+    
+    @property  
+    def last_name_display(self) -> str:
+        """Get last name for compatibility with frontend."""
+        parts = self.name.split() if self.name else []
+        return " ".join(parts[1:]) if len(parts) > 1 else ""
+
     def get_absolute_url(self) -> str:
         """Get URL for user's detail view.
 

@@ -20,7 +20,7 @@ import {
   InputLabel,
 } from '@mui/material';
 // Using standard HTML date inputs instead of MUI date pickers for now
-import { PlayArrow, Preview, CheckCircle } from '@mui/icons-material';
+import { PlayArrow, Preview, CheckCircle, Assessment, History } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 
 interface OrchestratorPageProps {}
@@ -195,9 +195,27 @@ const OrchestratorPage: React.FC<OrchestratorPageProps> = () => {
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom>
-        Shift Orchestrator
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h4" gutterBottom>
+          Shift Orchestrator
+        </Typography>
+        <Stack direction="row" spacing={2}>
+          <Button
+            variant="outlined"
+            startIcon={<Assessment />}
+            onClick={() => navigate('/fairness')}
+          >
+            Fairness Dashboard
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<History />}
+            onClick={() => navigate('/orchestrator-history')}
+          >
+            History
+          </Button>
+        </Stack>
+      </Box>
       <Typography variant="body1" color="text.secondary" paragraph>
         Generate fair shift assignments for incidents and waakdienst using the orchestration engine.
       </Typography>

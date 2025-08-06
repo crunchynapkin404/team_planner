@@ -228,7 +228,7 @@ const Calendar: React.FC<CalendarProps> = ({
   });
 
   return (
-    <Paper elevation={2} sx={{ p: 2, width: '100%', height: '100%' }}>
+    <Paper elevation={2} sx={{ p: 2, width: '100%' }}>
       {/* Calendar Controls */}
       <Box sx={{ mb: 2 }}>
         <Toolbar sx={{ px: 0, minHeight: 'auto !important' }}>
@@ -396,7 +396,7 @@ const Calendar: React.FC<CalendarProps> = ({
       {/* Calendar */}
       <Box 
         sx={{ 
-          height: 'calc(100vh - 300px)', 
+          height: '700px', 
           minHeight: '500px', 
           width: '100%',
           // Custom styles for compact events
@@ -428,7 +428,7 @@ const Calendar: React.FC<CalendarProps> = ({
           plugins={[dayGridPlugin, timeGridPlugin, timelinePlugin, resourceTimelinePlugin, resourcePlugin, interactionPlugin]}
           initialView={currentView}
           headerToolbar={false} // We use custom toolbar
-          height="100%"
+          height={700}
           firstDay={1} // Start week on Monday (0=Sunday, 1=Monday, etc.)
           
           // 24-hour time format

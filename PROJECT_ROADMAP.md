@@ -28,7 +28,7 @@ Before documenting the complete roadmap, I need clarification on several key asp
 - **Planning**: Same rules as Incidents (52-week planning, equal distribution, swap system)
 
 **Orchestrator Considerations:**
-- Generate both Incident and Waakdienst schedules together for optimal fairness
+- Generate both Incident and Waakdienst schedules seperately
 - Ensure no engineer has both Incident and Waakdienst in the same week
 - Fair distribution across both shift types combined
 
