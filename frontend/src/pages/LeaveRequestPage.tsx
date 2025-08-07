@@ -31,6 +31,8 @@ import {
   Stack,
   Fab,
   FormHelperText,
+  FormControlLabel,
+  Checkbox,
   Paper,
 } from '@mui/material';
 import {
@@ -92,8 +94,13 @@ const LeaveRequestPage: React.FC = () => {
     leave_type_id: '',
     start_date: '',
     end_date: '',
+    start_time: '',
+    end_time: '',
     days_requested: 1,
     reason: '',
+    is_recurring: false,
+    recurrence_type: 'none' as 'none' | 'weekly' | 'monthly' | 'custom',
+    recurrence_end_date: '',
   });
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -159,8 +166,11 @@ const LeaveRequestPage: React.FC = () => {
     try {
       await leaveService.approveLeaveRequest(id);
       loadData(); // Refresh the list
-    } catch (err) {
-      setError('Failed to approve leave request.');
+    } catch (err: any) {
+      const errorMessage = err?.response?.data?.error || 
+                          err?.response?.data?.detail || 
+                          'Failed to approve leave request.';
+      setError(errorMessage);
       console.error('Error approving leave request:', err);
     }
   };
@@ -234,12 +244,25 @@ const LeaveRequestPage: React.FC = () => {
         return;
       }
 
+      // Validation for recurring leave
+      if (createForm.is_recurring && !createForm.recurrence_end_date) {
+        setCreateError('Recurrence end date is required for recurring leave.');
+        return;
+      }
+
       const formData: CreateLeaveRequestData = {
         leave_type_id: parseInt(createForm.leave_type_id),
         start_date: createForm.start_date,
         end_date: createForm.end_date,
         days_requested: createForm.days_requested,
         reason: createForm.reason,
+        ...(createForm.start_time && { start_time: createForm.start_time }),
+        ...(createForm.end_time && { end_time: createForm.end_time }),
+        ...(createForm.is_recurring && { 
+          is_recurring: true,
+          recurrence_type: createForm.recurrence_type,
+          recurrence_end_date: createForm.recurrence_end_date
+        }),
       };
 
       const response = await leaveService.createLeaveRequest(formData);
@@ -249,8 +272,13 @@ const LeaveRequestPage: React.FC = () => {
         leave_type_id: '',
         start_date: '',
         end_date: '',
+        start_time: '',
+        end_time: '',
         days_requested: 1,
         reason: '',
+        is_recurring: false,
+        recurrence_type: 'none',
+        recurrence_end_date: '',
       });
       setCreateDialogOpen(false);
       setCreateError(null);
@@ -277,8 +305,13 @@ const LeaveRequestPage: React.FC = () => {
       leave_type_id: '',
       start_date: '',
       end_date: '',
+      start_time: '',
+      end_time: '',
       days_requested: 1,
       reason: '',
+      is_recurring: false,
+      recurrence_type: 'none',
+      recurrence_end_date: '',
     });
   };
 
@@ -616,15 +649,23 @@ const LeaveRequestPage: React.FC = () => {
                         
                         {canApprove(request) && (
                           <>
-                            <Tooltip title="Approve">
-                              <IconButton
-                                size="small"
-                                color="success"
-                                onClick={() => handleApprove(request.id)}
-                                disabled={!request.can_be_approved}
-                              >
-                                <ApproveIcon />
-                              </IconButton>
+                            <Tooltip title={
+                              request.can_be_approved 
+                                ? "Approve" 
+                                : request.has_shift_conflicts 
+                                ? "Cannot approve: has shift conflicts" 
+                                : "Cannot approve this request"
+                            }>
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  color="success"
+                                  onClick={() => handleApprove(request.id)}
+                                  disabled={!request.can_be_approved}
+                                >
+                                  <ApproveIcon />
+                                </IconButton>
+                              </span>
                             </Tooltip>
                             
                             <Tooltip title="Reject">
@@ -790,8 +831,86 @@ const LeaveRequestPage: React.FC = () => {
                 />
               </Grid>
 
-              {/* Spacer */}
-              <Grid item xs={12} sm={6} />
+              {/* Start Time */}
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Start Time (Optional)"
+                  type="time"
+                  value={createForm.start_time}
+                  onChange={(e) => handleCreateFormChange('start_time', e.target.value)}
+                  InputLabelProps={{
+                    shrink: true,
+                  }}
+                  helperText="Leave blank for full day"
+                />
+              </Grid>
+
+              {/* End Time */}
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="End Time (Optional)"
+                  type="time"
+                  value={createForm.end_time}
+                  onChange={(e) => handleCreateFormChange('end_time', e.target.value)}
+                  InputLabelProps={{
+                    shrink: true,
+                  }}
+                  helperText="Leave blank for full day"
+                />
+              </Grid>
+
+              {/* Recurring Leave Toggle */}
+              <Grid item xs={12}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={createForm.is_recurring}
+                      onChange={(e) => handleCreateFormChange('is_recurring', e.target.checked)}
+                    />
+                  }
+                  label="Recurring Leave"
+                />
+              </Grid>
+
+              {/* Recurring Options - Only show if recurring is enabled */}
+              {createForm.is_recurring && (
+                <>
+                  <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Recurrence Type</InputLabel>
+                      <Select
+                        value={createForm.recurrence_type}
+                        label="Recurrence Type"
+                        onChange={(e) => handleCreateFormChange('recurrence_type', e.target.value)}
+                      >
+                        <MenuItem value="WEEKLY">Weekly</MenuItem>
+                        <MenuItem value="MONTHLY">Monthly</MenuItem>
+                        <MenuItem value="YEARLY">Yearly</MenuItem>
+                      </Select>
+                      <FormHelperText>How often should this leave repeat?</FormHelperText>
+                    </FormControl>
+                  </Grid>
+
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Recurrence End Date"
+                      type="date"
+                      value={createForm.recurrence_end_date}
+                      onChange={(e) => handleCreateFormChange('recurrence_end_date', e.target.value)}
+                      InputLabelProps={{
+                        shrink: true,
+                      }}
+                      inputProps={{
+                        min: createForm.end_date || new Date().toISOString().split('T')[0],
+                      }}
+                      helperText="When should the recurring leave stop?"
+                    />
+                  </Grid>
+                </>
+              )}
 
               {/* Reason */}
               <Grid item xs={12}>

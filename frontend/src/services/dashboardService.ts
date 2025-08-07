@@ -1,5 +1,6 @@
 import { apiClient } from './apiClient';
 import { UserDashboardData } from './userService';
+import { API_CONFIG } from '../config/api';
 
 export interface DashboardData {
   incident_engineer: Engineer | null;
@@ -20,10 +21,10 @@ export interface Engineer {
 
 export const dashboardService = {
   getDashboardData: async (): Promise<DashboardData> => {
-    return apiClient.get('/shifts/api/dashboard/');
+    return apiClient.get(API_CONFIG.ENDPOINTS.SHIFTS_DASHBOARD);
   },
 
   getUserDashboardData: async (): Promise<UserDashboardData> => {
-    return apiClient.get('/api/users/me/dashboard/');
+    return apiClient.get(API_CONFIG.ENDPOINTS.USERS_DASHBOARD);
   },
 };

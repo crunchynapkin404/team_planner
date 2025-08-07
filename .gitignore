@@ -279,3 +279,8 @@ team_planner/media/
 .env
 .envs/*
 !.envs/.local/
+
+# Node.js binaries
+node-v*.*/
+node.tar.xz
+.nvm/

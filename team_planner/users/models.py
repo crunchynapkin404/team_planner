@@ -16,6 +16,14 @@ class User(AbstractUser):
     first_name = None  # type: ignore[assignment]
     last_name = None  # type: ignore[assignment]
 
+    def get_full_name(self) -> str:
+        """Override to use the name field instead of first_name + last_name."""
+        return self.name.strip() if self.name else self.username
+
+    def get_short_name(self) -> str:
+        """Override to use the name field."""
+        return self.first_name_display or self.username
+
     @property
     def display_name(self) -> str:
         """Get the display name for the user."""

@@ -79,9 +79,28 @@ ACCOUNT_EMAIL_VERIFICATION = "none"
 
 # django-cors-headers
 # ------------------------------------------------------------------------------
-# Allow all origins in development
-CORS_ALLOW_ALL_ORIGINS = True
+# For development, allow specific origins and enable credentials
+CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+]
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+# Override the CORS_URLS_REGEX from base settings to allow all URLs
+CORS_URLS_REGEX = r"^.*$"
 
 # CSRF
 # ------------------------------------------------------------------------------

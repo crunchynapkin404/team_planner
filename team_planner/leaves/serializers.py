@@ -7,23 +7,35 @@ User = get_user_model()
 
 class UserSerializer(serializers.ModelSerializer):
     """Serializer for User model (minimal)."""
-    name = serializers.SerializerMethodField()
+    display_name = serializers.SerializerMethodField()
     
     class Meta:
         model = User
-        fields = ['id', 'email', 'name']
+        fields = ['id', 'email', 'username', 'first_name', 'last_name', 'display_name']
     
-    def get_name(self, obj):
+    def get_display_name(self, obj):
         """Get user's display name."""
-        return getattr(obj, 'name', str(obj))
+        if obj.first_name and obj.last_name:
+            return f"{obj.first_name} {obj.last_name}"
+        elif obj.first_name:
+            return obj.first_name
+        elif obj.last_name:
+            return obj.last_name
+        else:
+            return obj.username or obj.email
 
 
 class LeaveTypeSerializer(serializers.ModelSerializer):
     """Serializer for LeaveType model."""
+    conflict_handling_display = serializers.CharField(source='get_conflict_handling_display', read_only=True)
     
     class Meta:
         model = LeaveType
-        fields = ['id', 'name', 'description', 'default_days_per_year', 'requires_approval', 'is_paid', 'is_active', 'color']
+        fields = [
+            'id', 'name', 'description', 'default_days_per_year', 'requires_approval', 
+            'is_paid', 'is_active', 'color', 'conflict_handling', 'conflict_handling_display',
+            'start_time', 'end_time'
+        ]
 
 
 class LeaveRequestSerializer(serializers.ModelSerializer):
@@ -33,30 +45,54 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
     leave_type_id = serializers.IntegerField(write_only=True)
     approved_by = UserSerializer(read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
+    recurrence_type_display = serializers.CharField(source='get_recurrence_type_display', read_only=True)
     can_be_approved = serializers.SerializerMethodField()
     has_shift_conflicts = serializers.ReadOnlyField()
+    effective_start_time = serializers.SerializerMethodField()
+    effective_end_time = serializers.SerializerMethodField()
     
     class Meta:
         model = LeaveRequest
         fields = [
             'id', 'employee', 'leave_type', 'leave_type_id', 
-            'start_date', 'end_date', 'days_requested', 'reason', 'status', 'status_display',
-            'approved_by', 'approved_at', 'rejection_reason', 'created', 'modified',
-            'can_be_approved', 'has_shift_conflicts'
+            'start_date', 'end_date', 'start_time', 'end_time', 'days_requested', 'reason', 
+            'status', 'status_display', 'approved_by', 'approved_at', 'rejection_reason', 
+            'created', 'modified', 'can_be_approved', 'has_shift_conflicts',
+            'is_recurring', 'recurrence_type', 'recurrence_type_display', 'recurrence_end_date',
+            'parent_request', 'effective_start_time', 'effective_end_time'
         ]
         read_only_fields = ['id', 'employee', 'status', 'approved_by', 'approved_at', 'created', 'modified']
     
     def get_can_be_approved(self, obj):
         """Check if the request can be approved."""
-        return obj.status == 'pending'
+        return obj.can_be_approved()
+    
+    def get_effective_start_time(self, obj):
+        """Get the effective start time for this leave request."""
+        time_obj = obj.get_effective_start_time()
+        return time_obj.strftime('%H:%M') if time_obj else None
+    
+    def get_effective_end_time(self, obj):
+        """Get the effective end time for this leave request."""
+        time_obj = obj.get_effective_end_time()
+        return time_obj.strftime('%H:%M') if time_obj else None
     
     def validate(self, attrs):
         """Validate leave request data."""
         start_date = attrs.get('start_date')
         end_date = attrs.get('end_date')
+        is_recurring = attrs.get('is_recurring', False)
+        recurrence_end_date = attrs.get('recurrence_end_date')
         
         if start_date and end_date and start_date > end_date:
             raise serializers.ValidationError("Start date cannot be after end date.")
+        
+        # Validate recurring leave
+        if is_recurring:
+            if not recurrence_end_date:
+                raise serializers.ValidationError("Recurrence end date is required for recurring leave.")
+            if recurrence_end_date <= start_date:
+                raise serializers.ValidationError("Recurrence end date must be after start date.")
         
         # Calculate days_requested if not provided
         if start_date and end_date and 'days_requested' not in attrs:
@@ -66,7 +102,7 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
         return attrs
     
     def create(self, validated_data):
-        """Create a new leave request."""
+        """Create a new leave request and handle recurring instances."""
         leave_type_id = validated_data.pop('leave_type_id')
         try:
             leave_type = LeaveType.objects.get(id=leave_type_id)
@@ -76,4 +112,11 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
         validated_data['leave_type'] = leave_type
         validated_data['status'] = 'pending'
         
-        return super().create(validated_data)
+        # Create the main request
+        leave_request = super().create(validated_data)
+        
+        # Create recurring instances if requested
+        if leave_request.is_recurring:
+            leave_request.create_recurring_instances()
+        
+        return leave_request

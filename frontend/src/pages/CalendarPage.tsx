@@ -4,7 +4,8 @@ import Calendar from '../components/calendar/Calendar';
 import { EventDropArg, EventClickArg, DateSelectArg } from '@fullcalendar/core';
 import { CalendarEvent } from '../types/calendar';
 import { formatDate } from '../utils/dateUtils';
-import axios from 'axios';
+import { apiClient } from '../services/apiClient';
+import { API_CONFIG } from '../config/api';
 
 const CalendarPage: React.FC = () => {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
@@ -19,9 +20,9 @@ const CalendarPage: React.FC = () => {
         setLoading(true);
         setError(null);
         
-        // Call the shifts API directly (not through the DRF API router)
-        const response = await axios.get('http://localhost:8000/shifts/api/shifts/');
-        const data = response.data as { events: CalendarEvent[] };
+        // Call the shifts API through the proxy
+        const response = await apiClient.get(API_CONFIG.ENDPOINTS.SHIFTS_LIST);
+        const data = response as { events: CalendarEvent[] };
         setEvents(data.events);
       } catch (err) {
         console.error('Failed to fetch shifts:', err);

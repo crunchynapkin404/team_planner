@@ -39,6 +39,8 @@ import {
   Assessment,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
+import { apiClient } from '../services/apiClient';
+import { API_CONFIG } from '../config/api';
 
 interface OrchestrationRun {
   id: number;
@@ -82,19 +84,9 @@ const OrchestratorHistory: React.FC = () => {
     
     try {
       // Load system status and recent runs
-      const statusResponse = await fetch('http://localhost:8000/orchestrators/api/status/', {
-        headers: {
-          'Authorization': `Token ${localStorage.getItem('token')}`,
-        },
-      });
-
-      if (statusResponse.ok) {
-        const statusData = await statusResponse.json();
-        setSystemStatus(statusData);
-        setRuns(statusData.recent_runs || []);
-      } else {
-        setError('Failed to load orchestrator status');
-      }
+      const statusData = await apiClient.get(API_CONFIG.ENDPOINTS.ORCHESTRATOR_STATUS) as any;
+      setSystemStatus(statusData);
+      setRuns(statusData.recent_runs || []);
     } catch (err) {
       setError('Network error occurred');
       console.error('Orchestrator status error:', err);

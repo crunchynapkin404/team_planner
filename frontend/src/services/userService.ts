@@ -1,4 +1,5 @@
 import { apiClient } from './apiClient';
+import { API_CONFIG, buildEndpointUrl } from '../config/api';
 
 export interface User {
   id: number;
@@ -121,27 +122,28 @@ export interface BulkSwapResponse {
 
 export const userService = {
   getCurrentUser: async (): Promise<User> => {
-    return apiClient.get('/api/users/me/');
+    return apiClient.get(API_CONFIG.ENDPOINTS.USERS_ME);
   },
 
   getUserDashboardData: async (): Promise<UserDashboardData> => {
-    return apiClient.get('/api/users/me/dashboard/');
+    return apiClient.get(API_CONFIG.ENDPOINTS.USERS_DASHBOARD);
   },
 
   getUpcomingShifts: async (limit: number = 5): Promise<UserShift[]> => {
-    return apiClient.get(`/shifts/api/user/upcoming-shifts/?limit=${limit}`);
+    return apiClient.get(`${API_CONFIG.ENDPOINTS.SHIFTS_USER_UPCOMING}?limit=${limit}`);
   },
 
   getIncomingSwapRequests: async (): Promise<SwapRequest[]> => {
-    return apiClient.get('/shifts/api/user/incoming-swap-requests/');
+    return apiClient.get(API_CONFIG.ENDPOINTS.SHIFTS_USER_INCOMING_SWAPS);
   },
 
   getOutgoingSwapRequests: async (): Promise<SwapRequest[]> => {
-    return apiClient.get('/shifts/api/user/outgoing-swap-requests/');
+    return apiClient.get(API_CONFIG.ENDPOINTS.SHIFTS_USER_OUTGOING_SWAPS);
   },
 
   respondToSwapRequest: async (requestId: number, action: 'approve' | 'reject', message?: string): Promise<void> => {
-    return apiClient.post(`/shifts/api/swap-requests/${requestId}/respond/`, {
+    const url = buildEndpointUrl(API_CONFIG.ENDPOINTS.SHIFTS_SWAP_REQUESTS_RESPOND, { id: requestId });
+    return apiClient.post(url, {
       action,
       message,
     });
@@ -153,23 +155,23 @@ export const userService = {
     target_shift_id?: number;
     reason: string;
   }): Promise<{ message: string; swap_request_id: number }> => {
-    return apiClient.post('/shifts/api/swap-requests/create/', data);
+    return apiClient.post(API_CONFIG.ENDPOINTS.SHIFTS_SWAP_REQUESTS_CREATE, data);
   },
 
   createBulkSwapRequest: async (data: BulkSwapRequest): Promise<BulkSwapResponse> => {
-    return apiClient.post('/shifts/api/swap-requests/bulk-create/', data);
+    return apiClient.post(API_CONFIG.ENDPOINTS.SHIFTS_SWAP_REQUESTS_BULK_CREATE, data);
   },
 
   getUserShifts: async (): Promise<UserShift[]> => {
-    return apiClient.get('/shifts/api/user/shifts/');
+    return apiClient.get(API_CONFIG.ENDPOINTS.SHIFTS_USER_SHIFTS);
   },
 
   getTeamMembers: async (): Promise<TeamMember[]> => {
-    return apiClient.get('/shifts/api/team-members/');
+    return apiClient.get(API_CONFIG.ENDPOINTS.SHIFTS_TEAM_MEMBERS);
   },
 
   getEmployeeShifts: async (employeeId: number): Promise<UserShift[]> => {
-    return apiClient.get(`/shifts/api/employee-shifts/?employee_id=${employeeId}`);
+    return apiClient.get(`${API_CONFIG.ENDPOINTS.SHIFTS_EMPLOYEE}?employee_id=${employeeId}`);
   },
 
   hasPermission: (user: User, permission: string): boolean => {

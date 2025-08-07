@@ -22,6 +22,8 @@ import {
 // Using standard HTML date inputs instead of MUI date pickers for now
 import { PlayArrow, Preview, CheckCircle, Assessment, History } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
+import { apiClient } from '../services/apiClient';
+import { API_CONFIG } from '../config/api';
 
 interface OrchestratorPageProps {}
 
@@ -71,15 +73,8 @@ const OrchestratorPage: React.FC<OrchestratorPageProps> = () => {
   React.useEffect(() => {
     const loadTeams = async () => {
       try {
-        const response = await fetch('http://localhost:8000/api/teams/', {
-          headers: {
-            'Authorization': `Token ${localStorage.getItem('token')}`,
-          },
-        });
-        if (response.ok) {
-          const teamData = await response.json();
-          setTeams(teamData);
-        }
+        const teamData = await apiClient.get(API_CONFIG.ENDPOINTS.TEAMS_LIST) as any;
+        setTeams(teamData);
       } catch (err) {
         console.error('Failed to load teams:', err);
       }
@@ -129,37 +124,26 @@ const OrchestratorPage: React.FC<OrchestratorPageProps> = () => {
     setResult(null);
 
     try {
-      const response = await fetch('http://localhost:8000/orchestrators/api/create/', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Token ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: `Orchestration ${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`,
-          description: description,
-          start_date: startDate.toISOString().split('T')[0],
-          end_date: endDate.toISOString().split('T')[0],
-          preview_only: previewOnly.toString(),
-          schedule_incidents: scheduleIncidents,
-          schedule_incidents_standby: scheduleIncidentsStandby,
-          schedule_waakdienst: scheduleWaakdienst,
-          team_id: selectedTeam
-        }),
-      });
+      const requestData = {
+        name: `Orchestration ${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`,
+        description: description,
+        start_date: startDate.toISOString().split('T')[0],
+        end_date: endDate.toISOString().split('T')[0],
+        preview_only: previewOnly.toString(),
+        schedule_incidents: scheduleIncidents,
+        schedule_incidents_standby: scheduleIncidentsStandby,
+        schedule_waakdienst: scheduleWaakdienst,
+        team_id: selectedTeam
+      };
 
-      if (response.ok) {
-        if (previewOnly) {
-          // Handle preview result
-          const previewResult = await response.json();
-          setResult(previewResult);
-        } else {
-          // Handle direct application
-          navigate('/calendar');
-        }
+      const result = await apiClient.post(API_CONFIG.ENDPOINTS.ORCHESTRATOR_CREATE, requestData) as any;
+      
+      if (previewOnly) {
+        // Handle preview result
+        setResult(result);
       } else {
-        const errorData = await response.json();
-        setError(errorData.error || 'Orchestration failed');
+        // Handle direct application
+        navigate('/calendar');
       }
     } catch (err: any) {
       setError(err.response?.data?.error || 'Network error occurred');
@@ -172,20 +156,8 @@ const OrchestratorPage: React.FC<OrchestratorPageProps> = () => {
   const handleApplyPreview = async () => {
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/orchestrators/api/apply-preview/', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Token ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (response.ok) {
-        navigate('/calendar');
-      } else {
-        const errorData = await response.json();
-        setError(errorData.error || 'Failed to apply preview');
-      }
+      await apiClient.post(API_CONFIG.ENDPOINTS.ORCHESTRATOR_APPLY_PREVIEW, {});
+      navigate('/calendar');
     } catch (err: any) {
       setError(err.response?.data?.error || 'Network error occurred');
     } finally {

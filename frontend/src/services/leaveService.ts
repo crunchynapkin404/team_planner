@@ -1,4 +1,5 @@
 import { apiClient } from './apiClient';
+import { API_CONFIG, buildEndpointUrl } from '../config/api';
 import { formatDate } from '../utils/dateUtils';
 
 export interface LeaveType {
@@ -10,6 +11,10 @@ export interface LeaveType {
   requires_approval: boolean;
   is_paid: boolean;
   is_active: boolean;
+  conflict_handling: 'full_unavailable' | 'daytime_only' | 'no_conflict';
+  conflict_handling_display: string;
+  start_time?: string;
+  end_time?: string;
 }
 
 export interface Employee {
@@ -45,6 +50,10 @@ export interface LeaveRequest {
   leave_type: LeaveType;
   start_date: string;
   end_date: string;
+  start_time?: string;
+  end_time?: string;
+  effective_start_time?: string;
+  effective_end_time?: string;
   days_requested: number;
   reason: string;
   status: 'pending' | 'approved' | 'rejected' | 'cancelled';
@@ -59,6 +68,13 @@ export interface LeaveRequest {
   modified: string;
   conflicting_shifts?: ConflictingShift[];
   suggested_employees?: Employee[];
+  
+  // Recurring leave fields
+  is_recurring: boolean;
+  recurrence_type: 'none' | 'weekly' | 'monthly' | 'custom';
+  recurrence_type_display: string;
+  recurrence_end_date?: string;
+  parent_request?: number;
 }
 
 export interface LeaveRequestsResponse {
@@ -74,8 +90,13 @@ export interface CreateLeaveRequestData {
   leave_type_id: number;
   start_date: string;
   end_date: string;
+  start_time?: string;
+  end_time?: string;
   days_requested: number;
   reason: string;
+  is_recurring?: boolean;
+  recurrence_type?: 'none' | 'weekly' | 'monthly' | 'custom';
+  recurrence_end_date?: string;
 }
 
 export interface CreateLeaveRequestResponse {
@@ -122,56 +143,61 @@ export const leaveService = {
       }
     });
     
-    return apiClient.get(`/api/leaves/requests/?${params.toString()}`);
+    return apiClient.get(`${API_CONFIG.ENDPOINTS.LEAVES_REQUESTS}?${params.toString()}`);
   },
 
   // Get a specific leave request with full details
   getLeaveRequest: async (id: number): Promise<LeaveRequest> => {
-    return apiClient.get(`/api/leaves/requests/${id}/`);
+    const url = buildEndpointUrl(API_CONFIG.ENDPOINTS.LEAVES_REQUEST_DETAIL, { id });
+    return apiClient.get(url);
   },
 
   // Create a new leave request
   createLeaveRequest: async (data: CreateLeaveRequestData): Promise<CreateLeaveRequestResponse> => {
-    return apiClient.post('/api/leaves/requests/create/', data);
+    return apiClient.post(API_CONFIG.ENDPOINTS.LEAVES_REQUEST_CREATE, data);
   },
 
   // Approve a leave request
   approveLeaveRequest: async (id: number): Promise<{ message: string; status: string }> => {
-    return apiClient.post(`/api/leaves/requests/${id}/approve/`);
+    const url = buildEndpointUrl(API_CONFIG.ENDPOINTS.LEAVES_REQUEST_APPROVE, { id });
+    return apiClient.post(url);
   },
 
   // Reject a leave request
   rejectLeaveRequest: async (id: number, rejectionReason: string): Promise<{ message: string; status: string }> => {
-    return apiClient.post(`/api/leaves/requests/${id}/reject/`, {
+    const url = buildEndpointUrl(API_CONFIG.ENDPOINTS.LEAVES_REQUEST_REJECT, { id });
+    return apiClient.post(url, {
       rejection_reason: rejectionReason,
     });
   },
 
   // Cancel a leave request
   cancelLeaveRequest: async (id: number): Promise<{ message: string; status: string }> => {
-    return apiClient.post(`/api/leaves/requests/${id}/cancel/`);
+    const url = buildEndpointUrl(API_CONFIG.ENDPOINTS.LEAVES_REQUEST_CANCEL, { id });
+    return apiClient.post(url);
   },
 
   // Get available leave types
   getLeaveTypes: async (): Promise<LeaveType[]> => {
-    const response = await apiClient.get('/api/leaves/leave-types/') as any;
+    const response = await apiClient.get(API_CONFIG.ENDPOINTS.LEAVES_TYPES) as any;
     // Handle paginated response format
     return response.results || response;
   },
 
   // Get conflicting shifts for a leave request
   getConflictingShifts: async (leaveRequestId: number): Promise<ConflictingShiftsResponse> => {
-    return apiClient.get(`/api/leaves/requests/${leaveRequestId}/conflicting-shifts/`);
+    const url = buildEndpointUrl(API_CONFIG.ENDPOINTS.LEAVES_CONFLICTING_SHIFTS, { id: leaveRequestId });
+    return apiClient.get(url);
   },
 
   // Check for conflicts when creating a leave request
   checkConflicts: async (startDate: string, endDate: string): Promise<ConflictCheckResponse> => {
-    return apiClient.get(`/api/leaves/requests/check_conflicts/?start_date=${startDate}&end_date=${endDate}`);
+    return apiClient.get(`${API_CONFIG.ENDPOINTS.LEAVES_CHECK_CONFLICTS}?start_date=${startDate}&end_date=${endDate}`);
   },
 
   // Get user's leave statistics
   getUserStats: async (): Promise<LeaveStats> => {
-    return apiClient.get('/api/leaves/requests/user_stats/');
+    return apiClient.get(API_CONFIG.ENDPOINTS.LEAVES_USER_STATS);
   },
 
   // Helper methods

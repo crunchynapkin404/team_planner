@@ -8,12 +8,18 @@ export interface CalendarEvent {
   backgroundColor?: string;
   borderColor?: string;
   extendedProps?: {
-    shiftType: 'incident' | 'waakdienst' | 'project' | 'change';
+    shiftType?: 'incident' | 'waakdienst' | 'project' | 'change';
+    leaveType?: 'vacation' | 'sick' | 'personal' | 'other';
     engineerName: string;
     engineerId: string;
-    status: 'confirmed' | 'pending' | 'swap_requested';
+    status: 'confirmed' | 'pending' | 'swap_requested' | 'approved' | 'rejected' | 'cancelled';
     teamId?: string;
     teamName?: string;
+    eventType: 'shift' | 'leave';
+    reason?: string;
+    days_requested?: number;
+    leave_type_name?: string;
+    leave_type_color?: string;
   };
 }
 

@@ -38,8 +38,16 @@ class UserViewSet(RetrieveModelMixin, ListModelMixin, UpdateModelMixin, GenericV
         user = request.user
         data = request.data
         
-        # Update user fields
-        user_fields = ['first_name', 'last_name', 'email']
+        # Handle name field properly
+        if 'first_name' in data or 'last_name' in data:
+            first_name = data.get('first_name', '').strip()
+            last_name = data.get('last_name', '').strip()
+            # Combine first_name and last_name into the name field
+            full_name = f"{first_name} {last_name}".strip()
+            user.name = full_name
+        
+        # Update other user fields
+        user_fields = ['email']
         for field in user_fields:
             if field in data:
                 setattr(user, field, data[field])
@@ -51,15 +59,20 @@ class UserViewSet(RetrieveModelMixin, ListModelMixin, UpdateModelMixin, GenericV
             from team_planner.employees.models import EmployeeProfile
             employee_profile = user.employee_profile
             
-            # Update employee profile fields
-            profile_fields = [
-                'phone_number', 'emergency_contact_name', 'emergency_contact_phone',
-                'available_for_incidents', 'available_for_waakdienst'
-            ]
+            # Map frontend field names to backend field names
+            profile_field_mapping = {
+                'phone': 'phone_number',
+                'phone_number': 'phone_number',
+                'emergency_contact_name': 'emergency_contact_name',
+                'emergency_contact_phone': 'emergency_contact_phone',
+                'available_for_incidents': 'available_for_incidents',
+                'available_for_waakdienst': 'available_for_waakdienst',
+                'can_work_weekends': 'available_for_waakdienst',
+            }
             
-            for field in profile_fields:
-                if field in data:
-                    setattr(employee_profile, field, data[field])
+            for frontend_field, backend_field in profile_field_mapping.items():
+                if frontend_field in data:
+                    setattr(employee_profile, backend_field, data[frontend_field])
             
             employee_profile.save()
             

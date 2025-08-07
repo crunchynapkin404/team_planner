@@ -1,13 +1,15 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { ApiError } from '../types';
+import { API_CONFIG, buildEndpointUrl } from '../config/api';
 
 class ApiClient {
   private client: AxiosInstance;
 
   constructor() {
     this.client = axios.create({
-      baseURL: 'http://localhost:8000',
+      baseURL: API_CONFIG.BASE_URL,
       timeout: 10000,
+      withCredentials: true,
       headers: {
         'Content-Type': 'application/json',
       },
@@ -77,7 +79,7 @@ class ApiClient {
 
   // Authentication methods
   async login(username: string, password: string): Promise<{ token: string }> {
-    const response = await this.post<{ token: string }>('/api/auth-token/', {
+    const response = await this.post<{ token: string }>(API_CONFIG.ENDPOINTS.AUTH_TOKEN, {
       username,
       password,
     });
@@ -90,14 +92,14 @@ class ApiClient {
 
   async logout(): Promise<void> {
     try {
-      await this.post('/api/auth/logout/');
+      await this.post(API_CONFIG.ENDPOINTS.AUTH_LOGOUT);
     } finally {
       localStorage.removeItem('token');
     }
   }
 
   async getCurrentUser(): Promise<any> {
-    return this.get('/api/users/me/');
+    return this.get(API_CONFIG.ENDPOINTS.USERS_ME);
   }
 
   // Helper to check if user is authenticated

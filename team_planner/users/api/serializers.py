@@ -54,6 +54,8 @@ class UserSerializer(serializers.ModelSerializer[User]):
     teams = serializers.SerializerMethodField()
     permissions = serializers.SerializerMethodField()
     employee_profile = serializers.SerializerMethodField()
+    first_name = serializers.SerializerMethodField()
+    last_name = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -73,6 +75,14 @@ class UserSerializer(serializers.ModelSerializer[User]):
             "permissions",
             "employee_profile",
         ]
+
+    def get_first_name(self, obj):
+        """Get first name from the name field."""
+        return obj.first_name_display
+
+    def get_last_name(self, obj):
+        """Get last name from the name field."""
+        return obj.last_name_display
 
     def get_teams(self, obj):
         """Get user's teams with roles."""

@@ -45,6 +45,8 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { formatDate } from '../utils/dateUtils';
+import { apiClient } from '../services/apiClient';
+import { API_CONFIG, buildEndpointUrl } from '../config/api';
 
 interface User {
   id: number;
@@ -103,46 +105,16 @@ const TeamManagement: React.FC = () => {
     
     try {
       // Load teams
-      const teamsResponse = await fetch('http://localhost:8000/api/teams/', {
-        headers: {
-          'Authorization': `Token ${localStorage.getItem('token')}`,
-        },
-      });
-
-      if (teamsResponse.ok) {
-        const teamsData = await teamsResponse.json();
-        setTeams(teamsData.results || teamsData);
-      } else {
-        throw new Error('Failed to load teams');
-      }
+      const teamsData = await apiClient.get(API_CONFIG.ENDPOINTS.TEAMS_LIST) as any;
+      setTeams(teamsData.results || teamsData);
 
       // Load departments
-      const deptResponse = await fetch('http://localhost:8000/api/departments/', {
-        headers: {
-          'Authorization': `Token ${localStorage.getItem('token')}`,
-        },
-      });
-
-      if (deptResponse.ok) {
-        const deptData = await deptResponse.json();
-        setDepartments(deptData.results || deptData);
-      } else {
-        throw new Error('Failed to load departments');
-      }
+      const deptData = await apiClient.get(API_CONFIG.ENDPOINTS.DEPARTMENTS_LIST) as any;
+      setDepartments(deptData.results || deptData);
 
       // Load users
-      const usersResponse = await fetch('http://localhost:8000/api/users/', {
-        headers: {
-          'Authorization': `Token ${localStorage.getItem('token')}`,
-        },
-      });
-
-      if (usersResponse.ok) {
-        const usersData = await usersResponse.json();
-        setUsers(usersData.results || usersData);
-      } else {
-        throw new Error('Failed to load users');
-      }
+      const usersData = await apiClient.get(API_CONFIG.ENDPOINTS.USERS_LIST) as any;
+      setUsers(usersData.results || usersData);
     } catch (err) {
       setError('Failed to load data');
       console.error('Data loading error:', err);
@@ -179,28 +151,16 @@ const TeamManagement: React.FC = () => {
 
   const handleSaveTeam = async () => {
     try {
-      const url = selectedTeam 
-        ? `http://localhost:8000/api/teams/${selectedTeam.id}/`
-        : 'http://localhost:8000/api/teams/';
-      
-      const method = selectedTeam ? 'PUT' : 'POST';
-      
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Token ${localStorage.getItem('token')}`,
-        },
-        body: JSON.stringify(formData),
-      });
-
-      if (response.ok) {
-        setTeamDialogOpen(false);
-        loadData(); // Reload data
+      if (selectedTeam) {
+        // Update existing team
+        await apiClient.put(buildEndpointUrl(API_CONFIG.ENDPOINTS.TEAM_DETAIL, { id: selectedTeam.id }), formData);
       } else {
-        const errorData = await response.json();
-        setError(Object.values(errorData).flat().join(', '));
+        // Create new team
+        await apiClient.post(API_CONFIG.ENDPOINTS.TEAMS_LIST, formData);
       }
+      
+      setTeamDialogOpen(false);
+      loadData(); // Reload data
     } catch (err) {
       setError('Failed to save team');
       console.error('Save team error:', err);
@@ -213,18 +173,8 @@ const TeamManagement: React.FC = () => {
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/teams/${teamId}/`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Token ${localStorage.getItem('token')}`,
-        },
-      });
-
-      if (response.ok) {
-        loadData(); // Reload data
-      } else {
-        setError('Failed to delete team');
-      }
+      await apiClient.delete(buildEndpointUrl(API_CONFIG.ENDPOINTS.TEAM_DETAIL, { id: teamId }));
+      loadData(); // Reload data
     } catch (err) {
       setError('Failed to delete team');
       console.error('Delete team error:', err);
@@ -242,18 +192,8 @@ const TeamManagement: React.FC = () => {
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/teams/${teamId}/members/${memberId}/`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Token ${localStorage.getItem('token')}`,
-        },
-      });
-
-      if (response.ok) {
-        loadData(); // Reload data
-      } else {
-        setError('Failed to remove member');
-      }
+      await apiClient.delete(buildEndpointUrl(API_CONFIG.ENDPOINTS.TEAM_MEMBER, { teamId, memberId }));
+      loadData(); // Reload data
     } catch (err) {
       setError('Failed to remove member');
       console.error('Remove member error:', err);

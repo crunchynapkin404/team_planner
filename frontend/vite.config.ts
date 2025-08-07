@@ -5,17 +5,29 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
+    host: true,
     port: 3000,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/shifts': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/leaves': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/orchestrators': {
+        target: 'http://127.0.0.1:8000',
         changeOrigin: true,
         secure: false,
       },
     },
-  },
-  build: {
-    outDir: '../team_planner/static/react',
-    emptyOutDir: true,
   },
 })

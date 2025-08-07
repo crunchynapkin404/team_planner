@@ -39,6 +39,8 @@ import {
   Cell,
 } from 'recharts';
 import { Refresh, Info } from '@mui/icons-material';
+import { apiClient } from '../services/apiClient';
+import { API_CONFIG } from '../config/api';
 
 interface FairnessData {
   employee_name: string;
@@ -85,20 +87,15 @@ const FairnessDashboard: React.FC = () => {
     setError(null);
     
     try {
-      const response = await fetch(`http://localhost:8000/orchestrators/api/fairness/?time_range=${timeRange}&employee=${selectedEmployee}`, {
-        headers: {
-          'Authorization': `Token ${localStorage.getItem('token')}`,
-        },
+      const params = new URLSearchParams({
+        time_range: timeRange,
+        employee: selectedEmployee.toString()
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        setFairnessData(data.employees || []);
-        setMetrics(data.metrics || null);
-        setHistoricalData(data.historical || []);
-      } else {
-        setError('Failed to load fairness data');
-      }
+      
+      const data = await apiClient.get(`${API_CONFIG.ENDPOINTS.ORCHESTRATOR_FAIRNESS}?${params}`) as any;
+      setFairnessData(data.employees || []);
+      setMetrics(data.metrics || null);
+      setHistoricalData(data.historical || []);
     } catch (err) {
       setError('Network error occurred');
       console.error('Fairness data error:', err);

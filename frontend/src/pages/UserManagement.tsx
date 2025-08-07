@@ -40,6 +40,8 @@ import {
 } from '@mui/icons-material';
 import { formatDate } from '../utils/dateUtils';
 import { useNavigate } from 'react-router-dom';
+import { apiClient } from '../services/apiClient';
+import { API_CONFIG, buildEndpointUrl } from '../config/api';
 
 interface User {
   id: number;
@@ -104,32 +106,12 @@ const UserManagement: React.FC = () => {
     
     try {
       // Load users
-      const usersResponse = await fetch('http://localhost:8000/api/users/', {
-        headers: {
-          'Authorization': `Token ${localStorage.getItem('token')}`,
-        },
-      });
-
-      if (usersResponse.ok) {
-        const usersData = await usersResponse.json();
-        setUsers(usersData.results || usersData);
-      } else {
-        throw new Error('Failed to load users');
-      }
+      const usersData = await apiClient.get(API_CONFIG.ENDPOINTS.USERS_LIST) as any;
+      setUsers(usersData.results || usersData);
 
       // Load teams
-      const teamsResponse = await fetch('http://localhost:8000/api/teams/', {
-        headers: {
-          'Authorization': `Token ${localStorage.getItem('token')}`,
-        },
-      });
-
-      if (teamsResponse.ok) {
-        const teamsData = await teamsResponse.json();
-        setTeams(teamsData.results || teamsData);
-      } else {
-        throw new Error('Failed to load teams');
-      }
+      const teamsData = await apiClient.get(API_CONFIG.ENDPOINTS.TEAMS_LIST) as any;
+      setTeams(teamsData.results || teamsData);
     } catch (err) {
       setError('Failed to load data');
       console.error('Data loading error:', err);
@@ -178,28 +160,16 @@ const UserManagement: React.FC = () => {
 
   const handleSaveUser = async () => {
     try {
-      const url = selectedUser 
-        ? `http://localhost:8000/api/users/${selectedUser.id}/`
-        : 'http://localhost:8000/api/users/';
-      
-      const method = selectedUser ? 'PUT' : 'POST';
-      
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Token ${localStorage.getItem('token')}`,
-        },
-        body: JSON.stringify(formData),
-      });
-
-      if (response.ok) {
-        setUserDialogOpen(false);
-        loadData(); // Reload data
+      if (selectedUser) {
+        // Update existing user
+        await apiClient.put(buildEndpointUrl(API_CONFIG.ENDPOINTS.USER_DETAIL, { id: selectedUser.id }), formData);
       } else {
-        const errorData = await response.json();
-        setError(Object.values(errorData).flat().join(', '));
+        // Create new user
+        await apiClient.post(API_CONFIG.ENDPOINTS.USERS_LIST, formData);
       }
+      
+      setUserDialogOpen(false);
+      loadData(); // Reload data
     } catch (err) {
       setError('Failed to save user');
       console.error('Save user error:', err);
@@ -208,22 +178,11 @@ const UserManagement: React.FC = () => {
 
   const handleToggleUserActive = async (user: User) => {
     try {
-      const response = await fetch(`http://localhost:8000/api/users/${user.id}/`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Token ${localStorage.getItem('token')}`,
-        },
-        body: JSON.stringify({
-          is_active: !user.is_active,
-        }),
+      await apiClient.patch(buildEndpointUrl(API_CONFIG.ENDPOINTS.USER_DETAIL, { id: user.id }), {
+        is_active: !user.is_active,
       });
-
-      if (response.ok) {
-        loadData(); // Reload data
-      } else {
-        setError('Failed to update user status');
-      }
+      
+      loadData(); // Reload data
     } catch (err) {
       setError('Failed to update user status');
       console.error('Toggle user error:', err);

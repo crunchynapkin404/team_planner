@@ -95,8 +95,21 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # Check if leave can be approved (no unresolved shift conflicts)
+        if not leave_request.can_be_approved():
+            return Response(
+                {
+                    'error': 'Cannot approve leave request. There are unresolved shift conflicts.',
+                    'detail': 'All conflicting shifts must have approved swap requests before the leave can be approved.',
+                    'blocking_message': leave_request.get_blocking_message()
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         leave_request.status = 'approved'
         leave_request.approved_by = user
+        from django.utils import timezone
+        leave_request.approved_at = timezone.now()
         leave_request.save()
         
         serializer = self.get_serializer(leave_request)

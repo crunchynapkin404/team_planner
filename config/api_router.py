@@ -5,6 +5,7 @@ from rest_framework.routers import SimpleRouter
 
 from team_planner.users.api.views import UserViewSet
 from team_planner.leaves.api import LeaveRequestViewSet, LeaveTypeViewSet
+from team_planner.teams.views import departments_list_api
 
 router = DefaultRouter() if settings.DEBUG else SimpleRouter()
 
@@ -16,4 +17,5 @@ router.register("leaves/leave-types", LeaveTypeViewSet, basename='leavetype')
 app_name = "api"
 urlpatterns = router.urls + [
     path("teams/", include("team_planner.teams.urls", namespace="teams")),
+    path("departments/", departments_list_api, name="departments_list"),
 ]

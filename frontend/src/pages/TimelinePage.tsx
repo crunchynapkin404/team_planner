@@ -37,13 +37,15 @@ import {
   Today,
   Close,
 } from '@mui/icons-material';
-import axios from 'axios';
+import { apiClient } from '../services/apiClient';
+import { API_CONFIG } from '../config/api';
 import { CalendarEvent } from '../types/calendar';
 import { formatDate, formatDateTime, formatTime } from '../utils/dateUtils';
 
 interface TimelineData {
   engineer: string;
   shifts: CalendarEvent[];
+  leaves: CalendarEvent[];
 }
 
 const TimelinePage: React.FC = () => {
@@ -54,28 +56,95 @@ const TimelinePage: React.FC = () => {
   const [dateRange, setDateRange] = useState<Date[]>([]);
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [allShiftsData, setAllShiftsData] = useState<CalendarEvent[]>([]);
+  const [allLeavesData, setAllLeavesData] = useState<CalendarEvent[]>([]);
   const [selectedShifts, setSelectedShifts] = useState<CalendarEvent[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  // Fetch shifts from API
-  const fetchShifts = async () => {
+  // Fetch shifts and leave requests from API
+  const fetchData = async () => {
     setLoading(true);
     setError(null);
     
     try {
-      // Call the shifts API directly (same as CalendarPage)
-      const response = await axios.get('http://localhost:8000/shifts/api/shifts/');
-      const data = response.data as { events: CalendarEvent[] };
-      setAllShiftsData(data.events);
+      // Fetch shifts
+      const shiftsResponse = await apiClient.get(API_CONFIG.ENDPOINTS.SHIFTS_LIST);
+      const shiftsData = shiftsResponse as { events: CalendarEvent[] };
+      
+      // Fetch leave requests
+      const leavesResponse = await apiClient.get(API_CONFIG.ENDPOINTS.LEAVES_REQUESTS);
+      const leavesData = leavesResponse as { results: any[] };
+      
+      // Convert leave requests to calendar events
+      const leaveEvents: CalendarEvent[] = leavesData.results.map((leave: any) => {
+        // Try to get a proper display name - check if first_name and last_name exist and are not null
+        let engineerName = leave.employee.display_name;
+        
+        if (leave.employee.first_name && leave.employee.last_name) {
+          // Use first_name + last_name if both are available
+          engineerName = `${leave.employee.first_name} ${leave.employee.last_name}`;
+        } else if (leave.employee.display_name && leave.employee.display_name !== leave.employee.username) {
+          // Use display_name if it's different from username (meaning it's a proper name)
+          engineerName = leave.employee.display_name;
+        } else {
+          // Fallback: try to format the username nicely
+          const username = leave.employee.username || leave.employee.display_name;
+          if (username && username.includes('.')) {
+            // Convert "bart.abraas" to "Bart Abraas"
+            engineerName = username.split('.').map((part: string) => 
+              part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
+            ).join(' ');
+          } else {
+            engineerName = username;
+          }
+        }
+        
+        return {
+          id: `leave-${leave.id}`,
+          title: `${leave.leave_type.name} (${leave.status})`,
+          start: leave.start_date,
+          end: leave.end_date,
+          backgroundColor: getLeaveColor(leave.status, leave.leave_type.color),
+          borderColor: getLeaveColor(leave.status, leave.leave_type.color),
+          extendedProps: {
+            eventType: 'leave' as const,
+            engineerName: engineerName,
+            engineerId: leave.employee.id.toString(),
+            status: leave.status,
+            reason: leave.reason,
+            days_requested: leave.days_requested,
+            leave_type_name: leave.leave_type.name,
+            leave_type_color: leave.leave_type.color,
+          }
+        };
+      });
+      
+      setAllShiftsData(shiftsData.events);
+      setAllLeavesData(leaveEvents);
       
       // Use today's date for initial processing
       const today = new Date();
-      processTimelineData(data.events, today);
+      processTimelineData(shiftsData.events, leaveEvents, today);
     } catch (err) {
-      setError('Failed to load shifts');
-      console.error('Error loading shifts:', err);
+      setError('Failed to load data');
+      console.error('Error loading data:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Helper function to get color based on leave status
+  const getLeaveColor = (status: string, leaveTypeColor: string) => {
+    switch (status) {
+      case 'approved':
+        return '#2e7d32'; // Darker green for approved (different from incidents_standby)
+      case 'pending':
+        return '#e65100'; // Dark orange for pending
+      case 'rejected':
+        return '#f44336'; // Red for rejected
+      case 'cancelled':
+        return '#9e9e9e'; // Grey for cancelled
+      default:
+        return '#2196f3'; // Blue as default
     }
   };
 
@@ -129,22 +198,41 @@ const TimelinePage: React.FC = () => {
     return dates;
   };
 
-  // Process shifts into timeline format
-  const processTimelineData = (shiftsData: CalendarEvent[], baseDate?: Date) => {
+  // Process shifts and leaves into timeline format
+  const processTimelineData = (shiftsData: CalendarEvent[], leavesData: CalendarEvent[], baseDate?: Date) => {
     // Group shifts by engineer
-    const engineerGroups: { [key: string]: CalendarEvent[] } = {};
-    
+    const shiftGroups: { [key: string]: CalendarEvent[] } = {};
     shiftsData.forEach((shift) => {
       const engineerName = shift.extendedProps?.engineerName || 'Unassigned';
-      if (!engineerGroups[engineerName]) {
-        engineerGroups[engineerName] = [];
+      if (!shiftGroups[engineerName]) {
+        shiftGroups[engineerName] = [];
       }
-      engineerGroups[engineerName].push(shift);
+      shiftGroups[engineerName].push(shift);
     });
 
+    // Group leaves by engineer
+    const leaveGroups: { [key: string]: CalendarEvent[] } = {};
+    leavesData.forEach((leave) => {
+      const engineerName = leave.extendedProps?.engineerName || 'Unassigned';
+      if (!leaveGroups[engineerName]) {
+        leaveGroups[engineerName] = [];
+      }
+      leaveGroups[engineerName].push(leave);
+    });
+
+    // Get all unique engineers from both shifts and leaves
+    const allEngineers = new Set([
+      ...Object.keys(shiftGroups),
+      ...Object.keys(leaveGroups)
+    ]);
+
     // Convert to timeline data
-    const timeline: TimelineData[] = Object.entries(engineerGroups)
-      .map(([engineer, shifts]) => ({ engineer, shifts }))
+    const timeline: TimelineData[] = Array.from(allEngineers)
+      .map((engineer) => ({
+        engineer,
+        shifts: shiftGroups[engineer] || [],
+        leaves: leaveGroups[engineer] || []
+      }))
       .sort((a, b) => a.engineer.localeCompare(b.engineer));
 
     setTimelineData(timeline);
@@ -170,6 +258,24 @@ const TimelinePage: React.FC = () => {
       
       // Check if shift overlaps with this day
       return shiftStart <= dayEnd && shiftEnd >= dayStart;
+    });
+  };
+
+  // Get leaves for a specific engineer and date
+  const getLeavesForEngineerAndDate = (engineer: string, date: Date): CalendarEvent[] => {
+    const engineerData = timelineData.find(td => td.engineer === engineer);
+    if (!engineerData) return [];
+    
+    return engineerData.leaves.filter(leave => {
+      const leaveStart = new Date(leave.start);
+      const leaveEnd = new Date(leave.end);
+      const dayStart = new Date(date);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(date);
+      dayEnd.setHours(23, 59, 59, 999);
+      
+      // Check if leave overlaps with this day
+      return leaveStart <= dayEnd && leaveEnd >= dayStart;
     });
   };
 
@@ -315,9 +421,9 @@ const TimelinePage: React.FC = () => {
     setSelectedShifts([]);
   };
 
-  // Load shifts on component mount
+  // Load data on component mount
   useEffect(() => {
-    fetchShifts();
+    fetchData();
     // Set current date to today when component first loads
     const today = new Date();
     setCurrentDate(today);
@@ -325,10 +431,10 @@ const TimelinePage: React.FC = () => {
 
   // Regenerate timeline when view mode or current date changes
   useEffect(() => {
-    if (allShiftsData.length > 0) {
-      processTimelineData(allShiftsData);
+    if (allShiftsData.length > 0 || allLeavesData.length > 0) {
+      processTimelineData(allShiftsData, allLeavesData, currentDate);
     }
-  }, [viewMode, currentDate, allShiftsData]);
+  }, [viewMode, currentDate, allShiftsData, allLeavesData]);
 
   return (
     <Box sx={{ p: 3 }}>
@@ -498,7 +604,9 @@ const TimelinePage: React.FC = () => {
                       </TableCell>
                       {dateRange.map((date) => {
                         const dayShifts = getShiftsForEngineerAndDate(engineerData.engineer, date);
+                        const dayLeaves = getLeavesForEngineerAndDate(engineerData.engineer, date);
                         const groupedShifts = groupShiftsByType(dayShifts);
+                        const hasEvents = dayShifts.length > 0 || dayLeaves.length > 0;
                         const isToday = date.toDateString() === new Date().toDateString();
                         
                         return (
@@ -508,35 +616,21 @@ const TimelinePage: React.FC = () => {
                               p: 0.5,
                               verticalAlign: 'top',
                               backgroundColor: isToday 
-                                ? (dayShifts.length > 0 ? '#e3f2fd' : '#f3f9ff')
-                                : (dayShifts.length > 0 ? '#fafafa' : 'transparent'),
+                                ? (hasEvents ? '#e3f2fd' : '#f3f9ff')
+                                : (hasEvents ? '#fafafa' : 'transparent'),
                               borderLeft: isToday ? '2px solid #1976d2' : 'none',
                               borderRight: isToday ? '2px solid #1976d2' : 'none'
                             }}
                           >
                             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                              {/* Render shifts */}
                               {Object.entries(groupedShifts).map(([shiftType, shifts]) => {
-                                // Get the earliest start and latest end time for this shift type
-                                const startTimes = shifts.map(s => new Date(s.start));
-                                const endTimes = shifts.map(s => new Date(s.end));
-                                const earliestStart = new Date(Math.min(...startTimes.map(d => d.getTime())));
-                                const latestEnd = new Date(Math.max(...endTimes.map(d => d.getTime())));
-                                
                                 // Create label with count if multiple shifts
                                 const count = shifts.length;
-                                const timeRange = `${earliestStart.toLocaleTimeString('en-US', { 
-                                  hour: '2-digit', 
-                                  minute: '2-digit',
-                                  hour12: false 
-                                })}-${latestEnd.toLocaleTimeString('en-US', { 
-                                  hour: '2-digit', 
-                                  minute: '2-digit',
-                                  hour12: false 
-                                })}`;
                                 
                                 const label = count > 1 
-                                  ? `${formatShiftType(shiftType)} (${count}x) ${timeRange}`
-                                  : `${formatShiftType(shiftType)} ${timeRange}`;
+                                  ? `${formatShiftType(shiftType)} (${count}x)`
+                                  : `${formatShiftType(shiftType)}`;
                                 
                                 return (
                                   <Chip
@@ -551,6 +645,54 @@ const TimelinePage: React.FC = () => {
                                       fontSize: '0.7rem',
                                       height: 'auto',
                                       cursor: 'pointer',
+                                      '&:hover': {
+                                        opacity: 0.8,
+                                        transform: 'scale(1.02)',
+                                      },
+                                      '& .MuiChip-label': {
+                                        whiteSpace: 'normal',
+                                        lineHeight: 1.2,
+                                        padding: '2px 4px',
+                                        textAlign: 'center'
+                                      }
+                                    }}
+                                  />
+                                );
+                              })}
+                              
+                              {/* Render leave requests */}
+                              {dayLeaves.map((leave) => {
+                                const startDate = new Date(leave.start);
+                                const endDate = new Date(leave.end);
+                                const isMultiDay = startDate.toDateString() !== endDate.toDateString();
+                                
+                                let additionalInfo = '';
+                                if (isMultiDay) {
+                                  // For multi-day leaves, show which day of the leave this is
+                                  const daysDiff = Math.ceil((date.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+                                  const totalDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+                                  additionalInfo = ` - Day ${daysDiff + 1}/${totalDays}`;
+                                }
+                                
+                                const label = `${leave.extendedProps?.leave_type_name || 'Leave'} (${leave.extendedProps?.status || 'Unknown'})${additionalInfo}`;
+                                
+                                return (
+                                  <Chip
+                                    key={`leave-${leave.id}`}
+                                    label={label}
+                                    size="small"
+                                    clickable
+                                    onClick={() => {
+                                      // Handle leave click - could show leave details
+                                      console.log('Leave clicked:', leave);
+                                    }}
+                                    sx={{
+                                      backgroundColor: leave.backgroundColor || '#90a4ae',
+                                      color: 'white',
+                                      fontSize: '0.7rem',
+                                      height: 'auto',
+                                      cursor: 'pointer',
+                                      border: '1px solid rgba(255,255,255,0.3)',
                                       '&:hover': {
                                         opacity: 0.8,
                                         transform: 'scale(1.02)',
@@ -594,6 +736,7 @@ const TimelinePage: React.FC = () => {
               Legend
             </Typography>
             <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+              {/* Shift Types */}
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Box sx={{ width: 20, height: 20, backgroundColor: '#2196f3', borderRadius: 1 }} />
                 <Typography variant="body2">Incidents</Typography>
@@ -606,9 +749,27 @@ const TimelinePage: React.FC = () => {
                 <Box sx={{ width: 20, height: 20, backgroundColor: '#9c27b0', borderRadius: 1 }} />
                 <Typography variant="body2">Waakdienst</Typography>
               </Box>
+              
+              {/* Leave Request Status */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box sx={{ width: 20, height: 20, backgroundColor: '#2e7d32', borderRadius: 1 }} />
+                <Typography variant="body2">Approved Leave</Typography>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box sx={{ width: 20, height: 20, backgroundColor: '#e65100', borderRadius: 1 }} />
+                <Typography variant="body2">Pending Leave</Typography>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box sx={{ width: 20, height: 20, backgroundColor: '#f44336', borderRadius: 1 }} />
+                <Typography variant="body2">Rejected Leave</Typography>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box sx={{ width: 20, height: 20, backgroundColor: '#9e9e9e', borderRadius: 1 }} />
+                <Typography variant="body2">Cancelled Leave</Typography>
+              </Box>
             </Box>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              Each chip shows shift type and time range
+              Shifts show type and time range • Leave requests show type, status, and duration
             </Typography>
           </CardContent>
         </Card>

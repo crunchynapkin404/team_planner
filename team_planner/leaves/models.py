@@ -11,6 +11,11 @@ from team_planner.contrib.sites.models import TimeStampedModel
 class LeaveType(TimeStampedModel):
     """Leave type configuration."""
     
+    class ConflictHandling(models.TextChoices):
+        FULL_UNAVAILABLE = "full_unavailable", _("Full Unavailable - Blocks all shifts")
+        DAYTIME_ONLY = "daytime_only", _("Daytime Only - Blocks day shifts, available for waakdienst")
+        NO_CONFLICT = "no_conflict", _("No Conflict - Does not block any shifts")
+    
     name = models.CharField(_("Name"), max_length=50, unique=True)
     description = models.TextField(_("Description"), blank=True)
     default_days_per_year = models.DecimalField(
@@ -38,6 +43,25 @@ class LeaveType(TimeStampedModel):
         default="#007bff",
         help_text=_("Hex color code for calendar display"),
     )
+    conflict_handling = models.CharField(
+        _("Conflict Handling"),
+        max_length=20,
+        choices=ConflictHandling.choices,
+        default=ConflictHandling.FULL_UNAVAILABLE,
+        help_text=_("How this leave type affects shift availability"),
+    )
+    start_time = models.TimeField(
+        _("Start Time"),
+        null=True,
+        blank=True,
+        help_text=_("Start time for partial day leave (leave blank for full day)"),
+    )
+    end_time = models.TimeField(
+        _("End Time"),
+        null=True,
+        blank=True,
+        help_text=_("End time for partial day leave (leave blank for full day)"),
+    )
     
     class Meta:
         verbose_name = _("Leave Type")
@@ -60,6 +84,12 @@ class LeaveRequest(TimeStampedModel):
         REJECTED = "rejected", _("Rejected")
         CANCELLED = "cancelled", _("Cancelled")
     
+    class RecurrenceType(models.TextChoices):
+        NONE = "none", _("One-time")
+        WEEKLY = "weekly", _("Weekly")
+        MONTHLY = "monthly", _("Monthly")
+        CUSTOM = "custom", _("Custom Pattern")
+    
     employee = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -73,6 +103,18 @@ class LeaveRequest(TimeStampedModel):
     )
     start_date = models.DateField(_("Start Date"))
     end_date = models.DateField(_("End Date"))
+    start_time = models.TimeField(
+        _("Start Time"),
+        null=True,
+        blank=True,
+        help_text=_("Start time for partial day leave (uses leave type default if blank)"),
+    )
+    end_time = models.TimeField(
+        _("End Time"),
+        null=True,
+        blank=True,
+        help_text=_("End time for partial day leave (uses leave type default if blank)"),
+    )
     days_requested = models.DecimalField(
         _("Days Requested"),
         max_digits=5,
@@ -86,6 +128,35 @@ class LeaveRequest(TimeStampedModel):
         choices=Status.choices,
         default=Status.PENDING,
     )
+    
+    # Recurrence fields
+    is_recurring = models.BooleanField(
+        _("Is Recurring"),
+        default=False,
+        help_text=_("Whether this is a recurring leave pattern"),
+    )
+    recurrence_type = models.CharField(
+        _("Recurrence Type"),
+        max_length=20,
+        choices=RecurrenceType.choices,
+        default=RecurrenceType.NONE,
+    )
+    recurrence_end_date = models.DateField(
+        _("Recurrence End Date"),
+        null=True,
+        blank=True,
+        help_text=_("When the recurring pattern should end"),
+    )
+    parent_request = models.ForeignKey(
+        'self',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='child_requests',
+        verbose_name=_("Parent Request"),
+        help_text=_("Reference to the original recurring request"),
+    )
+    
     approved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -125,15 +196,50 @@ class LeaveRequest(TimeStampedModel):
         return self.status in [self.Status.PENDING, self.Status.APPROVED]
     
     def get_conflicting_shifts(self):
-        """Get shifts that conflict with this leave request."""
+        """Get shifts that conflict with this leave request based on leave type."""
         from team_planner.shifts.models import Shift
+        from datetime import datetime, time
         
-        return Shift.objects.filter(
+        # If leave type doesn't cause conflicts, return empty queryset
+        if self.leave_type.conflict_handling == LeaveType.ConflictHandling.NO_CONFLICT:
+            return Shift.objects.none()
+        
+        # Get base queryset of shifts in the date range
+        shifts_queryset = Shift.objects.filter(
             assigned_employee=self.employee,
             start_datetime__date__lte=self.end_date,
             end_datetime__date__gte=self.start_date,
             status__in=['scheduled', 'confirmed']
         ).select_related('template')
+        
+        # For full unavailable (like vacation), return all shifts
+        if self.leave_type.conflict_handling == LeaveType.ConflictHandling.FULL_UNAVAILABLE:
+            return shifts_queryset
+        
+        # For daytime only (like leave), filter by shift type and time
+        elif self.leave_type.conflict_handling == LeaveType.ConflictHandling.DAYTIME_ONLY:
+            # Get the effective start and end times for this leave
+            leave_start_time = self.start_time or self.leave_type.start_time or time(8, 0)
+            leave_end_time = self.end_time or self.leave_type.end_time or time(17, 0)
+            
+            # Filter out waakdienst shifts (keep incidents and other day shifts)
+            daytime_shifts = shifts_queryset.exclude(
+                template__shift_type='waakdienst'
+            )
+            
+            # Also check if shifts overlap with the time period
+            conflicting_shifts = []
+            for shift in daytime_shifts:
+                shift_start_time = shift.start_datetime.time()
+                shift_end_time = shift.end_datetime.time()
+                
+                # Check if shift time overlaps with leave time
+                if (shift_start_time < leave_end_time and shift_end_time > leave_start_time):
+                    conflicting_shifts.append(shift.id)
+            
+            return daytime_shifts.filter(id__in=conflicting_shifts)
+        
+        return shifts_queryset
     
     @property 
     def has_shift_conflicts(self):
@@ -181,6 +287,16 @@ class LeaveRequest(TimeStampedModel):
             )
         
         return available_employees.select_related('employee_profile')
+    
+    def get_effective_start_time(self):
+        """Get the effective start time for this leave request."""
+        from datetime import time
+        return self.start_time or self.leave_type.start_time or time(8, 0)
+    
+    def get_effective_end_time(self):
+        """Get the effective end time for this leave request."""
+        from datetime import time
+        return self.end_time or self.leave_type.end_time or time(17, 0)
     
     def can_be_approved(self):
         """Check if leave request can be approved (no unresolved shift conflicts)."""
