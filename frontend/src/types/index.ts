@@ -120,3 +120,32 @@ export interface Orchestration {
   created_at: string;
   updated_at: string;
 }
+
+// Recurring Leave Pattern types
+export interface RecurringLeavePattern {
+  id: number;
+  employee: number;
+  name: string;
+  day_of_week: number;
+  frequency: 'weekly' | 'biweekly';
+  coverage_type: 'full_day' | 'morning' | 'afternoon';
+  pattern_start_date: string;
+  effective_from: string;
+  effective_until?: string;
+  is_active: boolean;
+  notes: string;
+  created: string;
+  modified: string;
+}
+
+export interface RecurringLeavePatternForm {
+  name: string;
+  day_of_week: number;
+  frequency: 'weekly' | 'biweekly';
+  coverage_type: 'full_day' | 'morning' | 'afternoon';
+  pattern_start_date: string;
+  effective_from: string;
+  effective_until?: string;
+  is_active: boolean;
+  notes: string;
+}

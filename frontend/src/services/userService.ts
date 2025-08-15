@@ -122,7 +122,7 @@ export interface BulkSwapResponse {
 
 export const userService = {
   getCurrentUser: async (): Promise<User> => {
-    return apiClient.get(API_CONFIG.ENDPOINTS.USERS_ME);
+    return apiClient.get(API_CONFIG.ENDPOINTS.USERS_ME_FULL);
   },
 
   getUserDashboardData: async (): Promise<UserDashboardData> => {

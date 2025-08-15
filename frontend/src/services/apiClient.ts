@@ -8,7 +8,7 @@ class ApiClient {
   constructor() {
     this.client = axios.create({
       baseURL: API_CONFIG.BASE_URL,
-      timeout: 10000,
+      timeout: 60000, // Increased to 60 seconds for orchestrator operations
       withCredentials: true,
       headers: {
         'Content-Type': 'application/json',

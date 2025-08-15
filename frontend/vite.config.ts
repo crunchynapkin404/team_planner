@@ -13,21 +13,18 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
-      '/shifts': {
+      // Restrict to API subpaths only to avoid hijacking SPA routes on reload
+      '/shifts/api': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
         secure: false,
       },
-      '/leaves': {
+      '/orchestrators/api': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
         secure: false,
       },
-      '/orchestrators': {
-        target: 'http://127.0.0.1:8000',
-        changeOrigin: true,
-        secure: false,
-      },
+      // Removed '/leaves' proxy: '/api' already covers '/api/leaves' endpoints
     },
   },
 })

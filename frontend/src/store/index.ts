@@ -1,9 +1,11 @@
 import { configureStore } from '@reduxjs/toolkit';
 import authReducer from './slices/authSlice';
+import orchestratorReducer from './orchestratorSlice';
 
 export const store = configureStore({
   reducer: {
     auth: authReducer,
+    orchestrator: orchestratorReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

@@ -24,11 +24,42 @@
       {% endif %}
     </div>
   </div>
+  
+  <!-- Recurring Leave Patterns Section -->
+  <div class="row">
+    <div class="col-sm-12">
+      <h3>Recurring Leave Patterns</h3>
+      {% if recurring_patterns %}
+        <div class="alert alert-info">
+          <strong>Active Patterns:</strong> This user has the following recurring leave patterns active:
+        </div>
+        {% for pattern in recurring_patterns %}
+          <div class="card mb-2">
+            <div class="card-body">
+              <h6 class="card-title">{{ pattern.name }}</h6>
+              <p class="card-text">
+                <strong>{{ pattern.get_frequency_display }}</strong> {{ pattern.get_day_of_week_display }} 
+                - {{ pattern.get_coverage_type_display }}
+                {% if pattern.notes %}
+                  <br><small class="text-muted">{{ pattern.notes }}</small>
+                {% endif %}
+              </p>
+            </div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div class="alert alert-success">
+          <strong>No recurring patterns:</strong> This user is available for all shifts with no regular recurring leave.
+        </div>
+      {% endif %}
+    </div>
+  </div>
+  
   {% if object == request.user %}
     <!-- Action buttons -->
     <div class="row">
       <div class="col-sm-12">
-        <a class="btn btn-primary" href="{% url 'users:update' %}" role="button">My Info</a>
+        <a class="btn btn-primary" href="{% url 'users:update' %}" role="button">My Info & Leave Patterns</a>
         <a class="btn btn-primary"
            href="{% url 'account_email' %}"
            role="button">E-Mail</a>

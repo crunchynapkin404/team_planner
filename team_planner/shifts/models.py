@@ -3,6 +3,7 @@ from django.core.validators import MinValueValidator
 from django.db import models
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
+from django.db import transaction
 
 from team_planner.contrib.sites.models import TimeStampedModel
 
@@ -38,13 +39,13 @@ class ShiftTemplate(TimeStampedModel):
     )
     is_active = models.BooleanField(_("Is Active"), default=True)
     
-    class Meta:
+    class Meta:  # type: ignore[override]
         verbose_name = _("Shift Template")
         verbose_name_plural = _("Shift Templates")
         ordering = ["shift_type", "name"]
 
     def __str__(self):
-        return f"{self.get_shift_type_display()} - {self.name}"
+        return f"{self.get_shift_type_display()} - {self.name}"  # type: ignore[attr-defined]
 
     def get_absolute_url(self):
         return reverse("shifts:template_detail", kwargs={"pk": self.pk})
@@ -94,7 +95,7 @@ class Shift(TimeStampedModel):
         help_text=_("Reason for assignment (from orchestrator)")
     )
     
-    class Meta:
+    class Meta:  # type: ignore[override]
         verbose_name = _("Shift")
         verbose_name_plural = _("Shifts")
         ordering = ["start_datetime"]
@@ -102,11 +103,15 @@ class Shift(TimeStampedModel):
             models.CheckConstraint(
                 check=models.Q(end_datetime__gt=models.F("start_datetime")),
                 name="end_after_start"
-            )
+            ),
+            models.UniqueConstraint(
+                fields=["assigned_employee", "start_datetime", "end_datetime", "template"],
+                name="unique_shift_per_employee_time_and_template",
+            ),
         ]
 
     def __str__(self):
-        return f"{self.template.get_shift_type_display()} - {self.assigned_employee.username} ({self.start_datetime.date()})"
+        return f"{self.template.get_shift_type_display()} - {self.assigned_employee.username} ({self.start_datetime.date()})"  # type: ignore[attr-defined]
 
     def get_absolute_url(self):
         return reverse("shifts:shift_detail", kwargs={"pk": self.pk})
@@ -171,13 +176,13 @@ class SwapRequest(TimeStampedModel):
     )
     approved_datetime = models.DateTimeField(_("Approved Date/Time"), null=True, blank=True)
     
-    class Meta:
+    class Meta:  # type: ignore[override]
         verbose_name = _("Swap Request")
         verbose_name_plural = _("Swap Requests")
         ordering = ["-created"]
 
     def __str__(self):
-        return f"Swap: {self.requesting_employee.username} → {self.target_employee.username} ({self.get_status_display()})"
+        return f"Swap: {self.requesting_employee.username} → {self.target_employee.username} ({self.get_status_display()})"  # type: ignore[attr-defined]
 
     def get_absolute_url(self):
         return reverse("shifts:swap_detail", kwargs={"pk": self.pk})
@@ -201,6 +206,7 @@ class SwapRequest(TimeStampedModel):
     def approve(self, approved_by_user, response_notes=""):
         """Approve the swap request and execute the swap."""
         from django.utils import timezone
+        from team_planner.notifications.mailer import notify_swap_approved, build_ics_for_shift
         
         if not self.can_be_approved:
             raise ValueError("Swap request cannot be approved in current status")
@@ -214,6 +220,16 @@ class SwapRequest(TimeStampedModel):
         
         # Execute the actual swap
         self._execute_swap()
+
+        # Notify both parties with ICS for the affected shift(s)
+        try:
+            ics = build_ics_for_shift(self.requesting_shift)
+            requester_email = getattr(self.requesting_employee, 'email', None)
+            target_email = getattr(self.target_employee, 'email', None)
+            shift_summary = f"Shift on {self.requesting_shift.start_datetime.strftime('%Y-%m-%d %H:%M')}"
+            notify_swap_approved(requester_email, target_email, shift_summary, ics)
+        except Exception:
+            pass
     
     def reject(self, response_notes=""):
         """Reject the swap request."""
@@ -233,29 +249,29 @@ class SwapRequest(TimeStampedModel):
         self.save()
     
     def _execute_swap(self):
-        """Execute the actual shift swap."""
-        # If there's a target shift, swap the assignments
+        """Execute the actual shift swap using transactional services and auditing."""
+        from .services import (
+            reassign_shift_transactional,
+            swap_shifts_transactional,
+        )
+        # If there's a target shift, swap the assignments atomically
         if self.target_shift:
-            # Swap the employees
-            original_requesting_employee = self.requesting_shift.assigned_employee
-            original_target_employee = self.target_shift.assigned_employee
-            
-            self.requesting_shift.assigned_employee = original_target_employee
-            self.target_shift.assigned_employee = original_requesting_employee
-            
-            # Add notes about the swap
-            swap_note = f"Swapped via request #{self.pk}"
-            self.requesting_shift.notes = f"{self.requesting_shift.notes}\n{swap_note}".strip()
-            self.target_shift.notes = f"{self.target_shift.notes}\n{swap_note}".strip()
-            
-            self.requesting_shift.save()
-            self.target_shift.save()
+            swap_shifts_transactional(
+                shift_a=self.requesting_shift,
+                shift_b=self.target_shift,
+                actor=self.approved_by,
+                reason=f"Swap approved via request #{self.pk}",
+                source="swap",
+            )
         else:
-            # Just reassign the requesting shift to target employee
-            self.requesting_shift.assigned_employee = self.target_employee
-            swap_note = f"Reassigned via swap request #{self.pk}"
-            self.requesting_shift.notes = f"{self.requesting_shift.notes}\n{swap_note}".strip()
-            self.requesting_shift.save()
+            # Reassign the requesting shift to target employee
+            reassign_shift_transactional(
+                shift=self.requesting_shift,
+                new_employee=self.target_employee,
+                actor=self.approved_by,
+                reason=f"Reassigned via swap request #{self.pk}",
+                source="swap",
+            )
     
     def validate_swap(self):
         """Validate that the swap is feasible."""
@@ -356,7 +372,7 @@ class FairnessScore(TimeStampedModel):
         help_text=_("Combined fairness score (0-100)")
     )
     
-    class Meta:
+    class Meta:  # type: ignore[override]
         verbose_name = _("Fairness Score")
         verbose_name_plural = _("Fairness Scores")
         ordering = ["-period_end", "employee__username"]
@@ -398,7 +414,7 @@ class TimeEntry(TimeStampedModel):
     )
     notes = models.TextField(_("Notes"), blank=True)
     
-    class Meta:
+    class Meta:  # type: ignore[override]
         verbose_name = _("Time Entry")
         verbose_name_plural = _("Time Entries")
         ordering = ["-clock_in"]
@@ -411,7 +427,7 @@ class TimeEntry(TimeStampedModel):
 
     def __str__(self):
         status = "In Progress" if not self.clock_out else "Completed"
-        return f"{self.employee.username} - {self.shift.template.get_shift_type_display()} ({status})"
+        return f"{self.employee.username} - {self.shift.template.get_shift_type_display()} ({status})"  # type: ignore[attr-defined]
 
     def get_absolute_url(self):
         return reverse("shifts:time_entry_detail", kwargs={"pk": self.pk})
@@ -461,7 +477,7 @@ class OvertimeEntry(TimeStampedModel):
         verbose_name=_("Related Shift")
     )
     
-    class Meta:
+    class Meta:  # type: ignore[override]
         verbose_name = _("Overtime Entry")
         verbose_name_plural = _("Overtime Entries")
         ordering = ["-date"]
@@ -497,13 +513,54 @@ class SchedulingRule(TimeStampedModel):
         help_text=_("Rule-specific configuration parameters")
     )
     
-    class Meta:
+    class Meta:  # type: ignore[override]
         verbose_name = _("Scheduling Rule")
         verbose_name_plural = _("Scheduling Rules")
         ordering = ["-priority", "shift_type", "name"]
 
     def __str__(self):
-        return f"{self.get_shift_type_display()} - {self.name} (Priority: {self.priority})"
+        return f"{self.get_shift_type_display()} - {self.name} (Priority: {self.priority})"  # type: ignore[attr-defined]
 
     def get_absolute_url(self):
         return reverse("shifts:rule_detail", kwargs={"pk": self.pk})
+
+
+class ShiftAuditLog(TimeStampedModel):
+    """Immutable audit trail for shift changes (swaps, reassignments)."""
+    class Action(models.TextChoices):
+        REASSIGNED = "reassigned", _("Reassigned")
+        SWAP_APPROVED = "swap_approved", _("Swap Approved")
+
+    action = models.CharField(max_length=50, choices=Action.choices)
+    shift = models.ForeignKey('Shift', on_delete=models.CASCADE, related_name='audit_logs')
+    from_employee = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+        verbose_name=_("From Employee"),
+    )
+    to_employee = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+        verbose_name=_("To Employee"),
+    )
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='performed_shift_audits',
+        verbose_name=_("Actor"),
+    )
+    reason = models.TextField(blank=True)
+    source = models.CharField(max_length=50, blank=True, help_text=_("Origin of change (swap/leave/admin/etc.)"))
+
+    class Meta:  # type: ignore[override]
+        verbose_name = _("Shift Audit Log")
+        verbose_name_plural = _("Shift Audit Logs")
+        ordering = ["-created", "-id"]

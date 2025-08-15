@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Automation Result{% endblock %}
+{% block content %}
+<div class="container">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>Automation Result</h1>
+    <a href="{% url 'orchestrators:dashboard' %}" class="btn btn-secondary">Back to Dashboard</a>
+  </div>
+
+  <div class="alert {% if dry_run %}alert-info{% else %}alert-success{% endif %}">
+    <strong>{{ dry_run|yesno:"DRY-RUN,APPLIED" }}</strong> horizon extension for {{ months }} month(s).
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header">Summary</div>
+    <div class="card-body">
+      <p>Planned up to <strong>{{ summary.end|date:"Y-m-d" }}</strong> across <strong>{{ summary.totals.teams }}</strong> team(s).</p>
+      <p>
+        Created: <strong>{{ summary.totals.created }}</strong>
+        &nbsp;|&nbsp; Duplicates skipped: <strong>{{ summary.totals.duplicates_skipped }}</strong>
+        &nbsp;|&nbsp; Incidents: <strong>{{ summary.totals.incidents }}</strong>
+        &nbsp;|&nbsp; Standby: <strong>{{ summary.totals.incidents_standby }}</strong>
+        &nbsp;|&nbsp; Waakdienst: <strong>{{ summary.totals.waakdienst }}</strong>
+      </p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">Per-team breakdown</div>
+    <div class="card-body table-responsive">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Team</th>
+            <th>Mode</th>
+            <th>Incidents</th>
+            <th>Standby</th>
+            <th>Waakdienst</th>
+            <th>Created</th>
+            <th>Duplicates</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for t in summary.teams %}
+          <tr>
+            <td>{{ t.team_name }} <span class="text-muted">(id={{ t.team_id }})</span></td>
+            <td>{% if t.preview %}<span class="badge bg-info">DRY-RUN</span>{% else %}<span class="badge bg-success">APPLIED</span>{% endif %}</td>
+            <td>{{ t.incidents }}</td>
+            <td>{{ t.incidents_standby }}</td>
+            <td>{{ t.waakdienst }}</td>
+            <td>{{ t.created }}</td>
+            <td>{{ t.duplicates_skipped }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="7" class="text-center text-muted">No teams</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

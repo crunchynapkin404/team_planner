@@ -11,9 +11,12 @@ from datetime import date, datetime, timedelta
 import json
 
 from .models import OrchestrationRun, OrchestrationResult
-from .algorithms import ShiftOrchestrator, FairnessCalculator
+from .fairness_calculators import BaseFairnessCalculator as FairnessCalculator  # Legacy compatibility  
+from .unified import ShiftOrchestrator  # Use new unified orchestrator
 from team_planner.employees.models import EmployeeProfile
 from team_planner.shifts.models import Shift, ShiftTemplate
+from team_planner.teams.models import Team
+from team_planner.orchestrators.tasks import extend_rolling_horizon_core
 
 
 @login_required
@@ -34,6 +37,8 @@ def orchestrator_dashboard(request):
         'total_runs': total_runs,
         'successful_runs': successful_runs,
         'success_rate': success_rate,
+        'teams': Team.objects.all().order_by('department__name', 'name'),
+        'default_months': 6,
     }
     
     return render(request, 'orchestrators/dashboard.html', context)
@@ -259,6 +264,15 @@ def apply_orchestration(request, pk):
                 }
             )
             
+            incidents_standby_template, _ = ShiftTemplate.objects.get_or_create(
+                shift_type='incidents_standby',
+                name='Weekly Incidents-Standby Shift',
+                defaults={
+                    'description': 'Monday-Friday incidents standby/backup shift',
+                    'duration_hours': 40,  # 5 days * 8 hours
+                }
+            )
+            
             waakdienst_template, _ = ShiftTemplate.objects.get_or_create(
                 shift_type='waakdienst',
                 name='Weekly Waakdienst Shift',
@@ -275,19 +289,28 @@ def apply_orchestration(request, pk):
                     template = incidents_template
                     # Incidents: Monday 8:00 to Friday 17:00
                     start_datetime = timezone.make_aware(
-                        timezone.datetime.combine(result.week_start_date, timezone.datetime.min.time().replace(hour=8))
+                        datetime.combine(result.week_start_date, datetime.min.time().replace(hour=8))
                     )
                     end_datetime = timezone.make_aware(
-                        timezone.datetime.combine(result.week_end_date - timedelta(days=2), timezone.datetime.min.time().replace(hour=17))
+                        datetime.combine(result.week_end_date - timedelta(days=2), datetime.min.time().replace(hour=17))
                     )
-                else:
+                elif result.shift_type == 'incidents_standby':
+                    template = incidents_standby_template
+                    # Incidents-Standby: Monday 8:00 to Friday 17:00 (same as incidents)
+                    start_datetime = timezone.make_aware(
+                        datetime.combine(result.week_start_date, datetime.min.time().replace(hour=8))
+                    )
+                    end_datetime = timezone.make_aware(
+                        datetime.combine(result.week_end_date - timedelta(days=2), datetime.min.time().replace(hour=17))
+                    )
+                else:  # waakdienst
                     template = waakdienst_template
                     # Waakdienst: Wednesday 17:00 to next Wednesday 8:00
                     start_datetime = timezone.make_aware(
-                        timezone.datetime.combine(result.week_start_date + timedelta(days=2), timezone.datetime.min.time().replace(hour=17))
+                        datetime.combine(result.week_start_date + timedelta(days=2), datetime.min.time().replace(hour=17))
                     )
                     end_datetime = timezone.make_aware(
-                        timezone.datetime.combine(result.week_start_date + timedelta(days=9), timezone.datetime.min.time().replace(hour=8))
+                        datetime.combine(result.week_start_date + timedelta(days=9), datetime.min.time().replace(hour=8))
                     )
                 
                 # Create the shift
@@ -483,7 +506,7 @@ def fairness_dashboard(request):
         fairness_score = fairness_scores.get(employee.pk, 0)
         
         employee_data.append({
-            'name': employee.get_full_name() or employee.username,
+            'name': (getattr(employee, 'get_full_name', lambda: '')() or getattr(employee, 'username', str(employee.pk))),
             'incidents': emp_assignments['incidents'],
             'waakdienst': emp_assignments['waakdienst'],
             'total': emp_assignments['incidents'] + emp_assignments['waakdienst'],
@@ -548,9 +571,34 @@ def fairness_api(request):
         emp_assignments = assignments.get(employee.pk, {'incidents': 0, 'waakdienst': 0})
         fairness_score = fairness_scores.get(employee.pk, 0)
         
-        data['employees'].append(employee.get_full_name() or employee.username)
+        data['employees'].append(getattr(employee, 'get_full_name', lambda: '')() or getattr(employee, 'username', str(employee.pk)))
         data['incidents'].append(emp_assignments['incidents'])
         data['waakdienst'].append(emp_assignments['waakdienst'])
         data['fairness_scores'].append(fairness_score)
     
     return JsonResponse(data)
+
+
+@login_required
+@permission_required('orchestrators.add_orchestrationrun', raise_exception=True)
+@require_http_methods(["POST"])
+def run_horizon_now(request):
+    """Run the rolling-horizon scheduler (sync) and show a summary page.
+    Uses anchor-aligned generators; respects team prefs; idempotent.
+    """
+    try:
+        months = int(request.POST.get('months', '6'))
+        dry_run = request.POST.get('dry_run') == 'on'
+        team_ids_raw = request.POST.getlist('teams')
+        team_ids = [int(t) for t in team_ids_raw if t]
+        if not team_ids:
+            team_ids = None
+        summary = extend_rolling_horizon_core(months=months, dry_run=dry_run, team_ids=team_ids)
+        return render(request, 'orchestrators/automation_result.html', {
+            'summary': summary,
+            'dry_run': dry_run,
+            'months': months,
+        })
+    except Exception as e:
+        messages.error(request, f"Automation run failed: {e}")
+        return redirect('orchestrators:dashboard')

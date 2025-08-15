@@ -54,14 +54,8 @@ const allNavigationItems: NavigationItem[] = [
     text: 'Fairness Dashboard', 
     iconName: 'Assessment', 
     path: '/fairness',
-    requiresStaff: true 
-  },
-  { 
-    text: 'Orchestration History', 
-    iconName: 'History', 
-    path: '/orchestrator-history', 
-    divider: true,
-    requiresStaff: true 
+    requiresStaff: true,
+    divider: true
   },
   { 
     text: 'User Management', 

@@ -57,6 +57,7 @@ import {
   CreateLeaveRequestData,
 } from '../services/leaveService';
 import { formatDate, formatDateTime } from '../utils/dateUtils';
+import BulkSwapDialog from '../components/BulkSwapDialog';
 
 const LeaveRequestPage: React.FC = () => {
   const { user } = useSelector((state: RootState) => state.auth) as { user: any };
@@ -88,6 +89,7 @@ const LeaveRequestPage: React.FC = () => {
   const [conflictsDialogOpen, setConflictsDialogOpen] = useState(false);
   const [conflictingShifts, setConflictingShifts] = useState<any[]>([]);
   const [loadingConflicts, setLoadingConflicts] = useState(false);
+  const [bulkSwapDialogOpen, setBulkSwapDialogOpen] = useState(false);
 
   // Create form state
   const [createForm, setCreateForm] = useState({
@@ -167,7 +169,8 @@ const LeaveRequestPage: React.FC = () => {
       await leaveService.approveLeaveRequest(id);
       loadData(); // Refresh the list
     } catch (err: any) {
-      const errorMessage = err?.response?.data?.error || 
+      const errorMessage = err?.response?.data?.blocking_message ||
+                          err?.response?.data?.error || 
                           err?.response?.data?.detail || 
                           'Failed to approve leave request.';
       setError(errorMessage);
@@ -622,18 +625,30 @@ const LeaveRequestPage: React.FC = () => {
                     </TableCell>
                     
                     <TableCell>
-                      {request.has_shift_conflicts && (
-                        <Tooltip title="Click to view conflicting shifts">
-                          <Chip
-                            label="Conflicts"
-                            size="small"
-                            color="warning"
-                            variant="outlined"
-                            onClick={() => handleShowConflicts(request)}
-                            sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'warning.light', opacity: 0.8 } }}
-                          />
-                        </Tooltip>
-                      )}
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        {request.has_shift_conflicts && (
+                          <Tooltip title="Click to view conflicting shifts">
+                            <Chip
+                              label="Conflicts"
+                              size="small"
+                              color="warning"
+                              variant="outlined"
+                              onClick={() => handleShowConflicts(request)}
+                              sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'warning.light', opacity: 0.8 } }}
+                            />
+                          </Tooltip>
+                        )}
+                        {request.within_active_window && request.has_shift_conflicts && (
+                          <Tooltip title={request.blocking_message || 'Approval is blocked until conflicts are resolved via swaps.'}>
+                            <Chip
+                              icon={<WarningIcon fontSize="small" />}
+                              label="Approval blocked"
+                              size="small"
+                              color="warning"
+                            />
+                          </Tooltip>
+                        )}
+                      </Stack>
                     </TableCell>
                     
                     <TableCell align="right">
@@ -651,10 +666,10 @@ const LeaveRequestPage: React.FC = () => {
                           <>
                             <Tooltip title={
                               request.can_be_approved 
-                                ? "Approve" 
-                                : request.has_shift_conflicts 
-                                ? "Cannot approve: has shift conflicts" 
-                                : "Cannot approve this request"
+                                ? 'Approve' 
+                                : (request.blocking_message || (request.has_shift_conflicts 
+                                  ? 'Cannot approve: has shift conflicts' 
+                                  : 'Cannot approve this request'))
                             }>
                               <span>
                                 <IconButton
@@ -949,6 +964,11 @@ const LeaveRequestPage: React.FC = () => {
         <DialogContent>
           {selectedLeaveRequest && (
             <Box sx={{ mt: 2 }}>
+              {selectedLeaveRequest.within_active_window && selectedLeaveRequest.has_shift_conflicts && (
+                <Alert severity="warning" sx={{ mb: 2 }}>
+                  {selectedLeaveRequest.blocking_message || 'This leave is within the active planning window and has conflicting shifts that must be swapped before approval.'}
+                </Alert>
+              )}
               <Typography variant="h6">{selectedLeaveRequest.employee.display_name}</Typography>
               <Typography>
                 {leaveService.formatDateRange(selectedLeaveRequest.start_date, selectedLeaveRequest.end_date)}
@@ -1095,11 +1115,23 @@ const LeaveRequestPage: React.FC = () => {
           )}
         </DialogContent>
         <DialogActions>
+          {conflictingShifts.length > 0 && (
+            <Button variant="contained" onClick={() => { setConflictsDialogOpen(false); setBulkSwapDialogOpen(true); }}>
+              Open Swap Wizard
+            </Button>
+          )}
           <Button onClick={() => setConflictsDialogOpen(false)}>
             Close
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Bulk Swap Dialog for resolving conflicts */}
+      <BulkSwapDialog
+        open={bulkSwapDialogOpen}
+        onClose={() => setBulkSwapDialogOpen(false)}
+        onSuccess={() => { setBulkSwapDialogOpen(false); loadData(); }}
+      />
     </Box>
   );
 };

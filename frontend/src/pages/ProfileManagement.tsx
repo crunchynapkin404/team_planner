@@ -43,6 +43,7 @@ import {
   Schedule,
 } from '@mui/icons-material';
 import { apiClient } from '../services/apiClient';
+import RecurringLeavePatterns from '../components/RecurringLeavePatterns';
 
 interface User {
   id: number;
@@ -514,6 +515,19 @@ const ProfileManagement: React.FC = () => {
               </Button>
             </CardActions>
           </Card>
+        </Grid>
+
+        {/* Recurring Leave Patterns */}
+        <Grid item xs={12}>
+          {user?.id ? (
+            <RecurringLeavePatterns userId={user.id} />
+          ) : (
+            <Card>
+              <CardContent>
+                <Typography>Loading user information...</Typography>
+              </CardContent>
+            </Card>
+          )}
         </Grid>
       </Grid>
 

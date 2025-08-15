@@ -12,7 +12,8 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from datetime import date, datetime, timedelta
 
-from team_planner.orchestrators.algorithms import ShiftOrchestrator
+from team_planner.orchestrators.unified import UnifiedOrchestrator
+from team_planner.teams.models import Team
 from team_planner.orchestrators.models import OrchestrationRun
 from team_planner.shifts.models import Shift
 from team_planner.employees.models import EmployeeProfile
@@ -92,8 +93,20 @@ class Command(BaseCommand):
             
             self.stdout.write(f'\\nCreated orchestration run: {run.name} (ID: {run.pk})')
             
+            # Get Team 7 for testing
+            try:
+                team = Team.objects.get(pk=7)
+            except Team.DoesNotExist:
+                self.stdout.write(self.style.ERROR('Team 7 not found. Please ensure Team 7 exists.'))
+                return
+            
             # Create and run orchestrator
-            orchestrator = ShiftOrchestrator(start_datetime, end_datetime)
+            orchestrator = UnifiedOrchestrator(
+                team=team,
+                start_date=start_datetime, 
+                end_date=end_datetime,
+                dry_run=preview_only
+            )
             
             if preview_only:
                 self.stdout.write('\\nRunning preview...')

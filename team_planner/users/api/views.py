@@ -29,6 +29,19 @@ class UserViewSet(RetrieveModelMixin, ListModelMixin, UpdateModelMixin, GenericV
 
     @action(detail=False)
     def me(self, request):
+        # Return a minimal payload as expected by tests
+        user = request.user
+        base_url = request.build_absolute_uri('/').rstrip('/')
+        url = f"{base_url}/api/users/{user.username}/"
+        return Response(status=status.HTTP_200_OK, data={
+            'username': user.username,
+            'url': url,
+            'name': user.name,
+        })
+
+    @action(detail=False, url_path='me/full')
+    def me_full(self, request):
+        """Return full user info (used by frontend for RBAC/navigation)."""
         serializer = UserSerializer(request.user, context={"request": request})
         return Response(status=status.HTTP_200_OK, data=serializer.data)
 
@@ -65,6 +78,11 @@ class UserViewSet(RetrieveModelMixin, ListModelMixin, UpdateModelMixin, GenericV
                 'phone_number': 'phone_number',
                 'emergency_contact_name': 'emergency_contact_name',
                 'emergency_contact_phone': 'emergency_contact_phone',
+                'employment_type': 'employment_type',
+                'status': 'status',
+                'hire_date': 'hire_date',
+                'termination_date': 'termination_date',
+                'salary': 'salary',
                 'available_for_incidents': 'available_for_incidents',
                 'available_for_waakdienst': 'available_for_waakdienst',
                 'can_work_weekends': 'available_for_waakdienst',

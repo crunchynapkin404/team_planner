@@ -42,51 +42,16 @@ def respond_to_swap_request_api(request, pk):
         message = request.data.get('message', '')
         
         if action == 'approve':
-            swap_request.status = SwapRequest.Status.APPROVED
-            swap_request.response_notes = message
-            swap_request.approved_by = request.user
-            swap_request.approved_datetime = timezone.now()
-            swap_request.save()
-            
-            # Implement the actual shift swapping logic
-            requesting_shift = swap_request.requesting_shift
-            target_shift = swap_request.target_shift
-            
-            if target_shift:
-                # Direct shift swap - swap the assigned employees
-                original_requesting_employee = requesting_shift.assigned_employee
-                original_target_employee = target_shift.assigned_employee
-                
-                requesting_shift.assigned_employee = original_target_employee
-                target_shift.assigned_employee = original_requesting_employee
-                
-                requesting_shift.save()
-                target_shift.save()
-                
-                return Response({
-                    'message': 'Swap request approved successfully. Shifts have been swapped.',
-                    'swapped_shifts': {
-                        'requesting_shift_id': requesting_shift.pk,
-                        'target_shift_id': target_shift.pk
-                    }
-                })
-            else:
-                # Open swap request - assign the requesting shift to the target employee
-                requesting_shift.assigned_employee = swap_request.target_employee
-                requesting_shift.save()
-                
-                return Response({
-                    'message': 'Swap request approved successfully. Shift has been assigned to you.',
-                    'assigned_shift_id': requesting_shift.pk
-                })
-            
+            # Delegate to model method (handles transactional swap + notifications)
+            swap_request.approve(approved_by_user=request.user, response_notes=message)
+            return Response({
+                'message': 'Swap request approved successfully.',
+                'status': swap_request.status,
+                'id': swap_request.pk,
+            })
         elif action == 'reject':
-            swap_request.status = SwapRequest.Status.REJECTED
-            swap_request.response_notes = message
-            swap_request.save()
-            
-            return Response({'message': 'Swap request rejected.'})
-            
+            swap_request.reject(response_notes=message)
+            return Response({'message': 'Swap request rejected.', 'status': swap_request.status})
         else:
             return Response(
                 {'error': 'Invalid action. Must be "approve" or "reject".'},
@@ -402,10 +367,10 @@ def get_team_members_api(request):
         
         members_data = [{
             'id': user.pk,
-            'username': user.username,
-            'first_name': getattr(user, 'first_name_display', user.username),
+            'username': getattr(user, 'username', getattr(user, 'email', '')),
+            'first_name': getattr(user, 'first_name_display', getattr(user, 'username', '')),
             'last_name': getattr(user, 'last_name_display', ''),
-            'display_name': getattr(user, 'display_name', user.username),
+            'display_name': getattr(user, 'display_name', getattr(user, 'name', getattr(user, 'username', ''))),
         } for user in team_members]
         
         return Response(members_data)

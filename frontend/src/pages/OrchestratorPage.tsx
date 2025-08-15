@@ -8,10 +8,7 @@ import {
   FormControlLabel,
   Checkbox,
   Grid,
-  Card,
-  CardContent,
   Alert,
-  CircularProgress,
   Chip,
   Stack,
   MenuItem,
@@ -19,8 +16,7 @@ import {
   FormControl,
   InputLabel,
 } from '@mui/material';
-// Using standard HTML date inputs instead of MUI date pickers for now
-import { PlayArrow, Preview, CheckCircle, Assessment, History } from '@mui/icons-material';
+import { Preview, CheckCircle } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/apiClient';
 import { API_CONFIG } from '../config/api';
@@ -57,7 +53,6 @@ interface Team {
 const OrchestratorPage: React.FC<OrchestratorPageProps> = () => {
   const [startDate, setStartDate] = useState<Date | null>(getNextMonday());
   const [endDate, setEndDate] = useState<Date | null>(getEndOfYear());
-  const [description, setDescription] = useState('');
   const [previewOnly, setPreviewOnly] = useState(true);
   const [scheduleIncidents, setScheduleIncidents] = useState(true);
   const [scheduleIncidentsStandby, setScheduleIncidentsStandby] = useState(false);
@@ -65,8 +60,10 @@ const OrchestratorPage: React.FC<OrchestratorPageProps> = () => {
   const [selectedTeam, setSelectedTeam] = useState<number | ''>('');
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<OrchestrationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [autoOverview, setAutoOverview] = useState<any | null>(null);
+  const [rollingEnabled, setRollingEnabled] = useState<Record<string, boolean>>({});
+  const [result, setResult] = useState<OrchestrationResult | null>(null);
   const navigate = useNavigate();
 
   // Load teams on component mount
@@ -81,6 +78,24 @@ const OrchestratorPage: React.FC<OrchestratorPageProps> = () => {
     };
     loadTeams();
   }, []);
+
+  // Load auto overview
+  const loadAutoOverview = async () => {
+    try {
+      const res = await apiClient.get(API_CONFIG.ENDPOINTS.ORCHESTRATOR_AUTO_OVERVIEW) as any;
+      setAutoOverview(res);
+    } catch (e) {
+      // ignore
+    }
+  };
+  React.useEffect(() => { loadAutoOverview(); }, []);
+
+  // Map overview into local rolling state when team changes
+  React.useEffect(() => {
+    if (!autoOverview || !selectedTeam) return;
+    const team = autoOverview.teams.find((t: any) => t.id === selectedTeam);
+    if (team && team.rolling_enabled) setRollingEnabled(team.rolling_enabled);
+  }, [autoOverview, selectedTeam]);
 
   function getNextMonday(): Date {
     const today = new Date();
@@ -98,7 +113,9 @@ const OrchestratorPage: React.FC<OrchestratorPageProps> = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+    // Force preview for manual seeding flow
+    setPreviewOnly(true);
+
     if (!startDate || !endDate) {
       setError('Please select both start and end dates');
       return;
@@ -126,10 +143,9 @@ const OrchestratorPage: React.FC<OrchestratorPageProps> = () => {
     try {
       const requestData = {
         name: `Orchestration ${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`,
-        description: description,
         start_date: startDate.toISOString().split('T')[0],
         end_date: endDate.toISOString().split('T')[0],
-        preview_only: previewOnly.toString(),
+        preview_only: true,
         schedule_incidents: scheduleIncidents,
         schedule_incidents_standby: scheduleIncidentsStandby,
         schedule_waakdienst: scheduleWaakdienst,
@@ -165,367 +181,177 @@ const OrchestratorPage: React.FC<OrchestratorPageProps> = () => {
     }
   };
 
+  const toggleRolling = async (shiftType: 'incidents'|'incidents_standby'|'waakdienst', enabled: boolean) => {
+    try {
+      const res = await apiClient.post(API_CONFIG.ENDPOINTS.ORCHESTRATOR_AUTO_TOGGLE, { team_id: selectedTeam, shift_type: shiftType, enabled }) as any;
+      setRollingEnabled((prev) => ({ ...prev, [shiftType]: !!res.enabled }));
+      await loadAutoOverview();
+    } catch (e: any) {
+      setError(e?.data?.error || e?.message || 'Failed to toggle');
+    }
+  };
+
+  // Simplified UI helpers
+  const defaultSixMonths = () => {
+    const today = new Date();
+    const end = new Date(today);
+    end.setDate(end.getDate() + 7 * 26);
+    setStartDate(getNextMonday());
+    setEndDate(end);
+  };
+
+  React.useEffect(() => { defaultSixMonths(); }, []);
+
   return (
     <Box sx={{ p: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h4" gutterBottom>
-          Shift Orchestrator
-        </Typography>
-        <Stack direction="row" spacing={2}>
-          <Button
-            variant="outlined"
-            startIcon={<Assessment />}
-            onClick={() => navigate('/fairness')}
-          >
-            Fairness Dashboard
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<History />}
-            onClick={() => navigate('/orchestrator-history')}
-          >
-            History
-          </Button>
-        </Stack>
-      </Box>
-      <Typography variant="body1" color="text.secondary" paragraph>
-        Generate fair shift assignments for incidents and waakdienst using the orchestration engine.
-      </Typography>
+      <Typography variant="h4" gutterBottom>Orchestrator</Typography>
 
-      <Grid container spacing={3}>
-        <Grid item xs={12} md={8}>
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Orchestration Parameters
-            </Typography>
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
 
-            <form onSubmit={handleSubmit}>
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    label="Start Date"
-                    type="date"
-                    value={startDate ? startDate.toISOString().split('T')[0] : ''}
-                    onChange={(e) => setStartDate(e.target.value ? new Date(e.target.value) : null)}
-                    fullWidth
-                    required
-                    InputLabelProps={{
-                      shrink: true,
-                    }}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    label="End Date"
-                    type="date"
-                    value={endDate ? endDate.toISOString().split('T')[0] : ''}
-                    onChange={(e) => setEndDate(e.target.value ? new Date(e.target.value) : null)}
-                    fullWidth
-                    required
-                    InputLabelProps={{
-                      shrink: true,
-                    }}
-                  />
-                </Grid>
-              </Grid>
+      <Paper sx={{ p: 2, mb: 2 }}>
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={6}>
+            <FormControl fullWidth required>
+              <InputLabel>Team</InputLabel>
+              <Select
+                value={selectedTeam}
+                onChange={(e) => setSelectedTeam(e.target.value as number)}
+                label="Team"
+              >
+                {teams.map((t) => (
+                  <MenuItem key={t.id} value={t.id}>
+                    {t.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            {autoOverview && selectedTeam && (
+              <Box sx={{ mt: 1 }}>
+                <Alert severity={autoOverview.teams.find((t:any)=>t.id===selectedTeam)?.seed_ready ? 'success' : 'warning'}>
+                  {autoOverview.teams.find((t:any)=>t.id===selectedTeam)?.seed_ready ? 'Initial 6-month plan detected' : 'Needs initial 6-month plan to enable rolling'}
+                </Alert>
+              </Box>
+            )}
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Typography variant="subtitle2">Rolling status (per shift type)</Typography>
+            <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap' }}>
+              {(['incidents','incidents_standby','waakdienst'] as const).map(st => (
+                <Chip key={st} label={`${st}: ${rollingEnabled?.[st] ? 'ON' : 'OFF'}`} color={rollingEnabled?.[st] ? 'success' : 'default'} />
+              ))}
+            </Stack>
+          </Grid>
+        </Grid>
+      </Paper>
 
-              <Grid container spacing={2} sx={{ mt: 1 }}>
-                <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth required>
-                    <InputLabel>Team</InputLabel>
-                    <Select
-                      value={selectedTeam}
-                      onChange={(e) => setSelectedTeam(e.target.value as number)}
-                      label="Team"
-                    >
-                      {teams.map((team) => (
-                        <MenuItem key={team.id} value={team.id}>
-                          {team.name}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Shift Types to Schedule
-                  </Typography>
-                  <Stack spacing={1}>
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          checked={scheduleIncidents}
-                          onChange={(e) => setScheduleIncidents(e.target.checked)}
-                        />
-                      }
-                      label="Incidents - Business hours coverage (Mon-Fri 08:00-17:00)"
-                    />
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          checked={scheduleIncidentsStandby}
-                          onChange={(e) => setScheduleIncidentsStandby(e.target.checked)}
-                        />
-                      }
-                      label="Incidents-Standby - Secondary coverage (Mon-Fri 08:00-17:00)"
-                    />
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          checked={scheduleWaakdienst}
-                          onChange={(e) => setScheduleWaakdienst(e.target.checked)}
-                        />
-                      }
-                      label="Waakdienst - On-call coverage (evenings, nights, weekends)"
-                    />
-                  </Stack>
-                </Grid>
-              </Grid>
-
-              <TextField
-                label="Description (Optional)"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                multiline
-                rows={3}
-                fullWidth
-                sx={{ mt: 2 }}
-                placeholder="Describe this orchestration run..."
-              />
-
+      <Paper sx={{ p: 2, mb: 2 }}>
+        <Typography variant="h6">Create initial 6-month plan (manual)</Typography>
+        <Typography variant="body2" color="text.secondary">Pick a shift type and generate a preview, then apply to seed the team.</Typography>
+        <Grid container spacing={2} sx={{ mt: 1 }}>
+          <Grid item xs={12} sm={4}>
+            <TextField
+              label="Start"
+              type="date"
+              value={startDate ? startDate.toISOString().split('T')[0] : ''}
+              onChange={(e)=>setStartDate(e.target.value? new Date(e.target.value): null)}
+              fullWidth
+              InputLabelProps={{
+                shrink: true,
+              }}
+            />
+          </Grid>
+          <Grid item xs={12} sm={4}>
+            <TextField
+              label="End (≈6 months)"
+              type="date"
+              value={endDate ? endDate.toISOString().split('T')[0] : ''}
+              onChange={(e)=>setEndDate(e.target.value? new Date(e.target.value): null)}
+              fullWidth
+              InputLabelProps={{
+                shrink: true,
+              }}
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <Stack direction="row" spacing={2}>
               <FormControlLabel
                 control={
                   <Checkbox
-                    checked={previewOnly}
-                    onChange={(e) => setPreviewOnly(e.target.checked)}
+                    checked={scheduleIncidents}
+                    onChange={(e)=>{setScheduleIncidents(e.target.checked); setScheduleIncidentsStandby(false); setScheduleWaakdienst(false);}}
                   />
                 }
-                label="Preview Only (Don't create actual shifts)"
-                sx={{ mt: 2, display: 'block' }}
+                label="Incidents"
               />
-
-              {error && (
-                <Alert severity="error" sx={{ mt: 2 }}>
-                  {error}
-                </Alert>
-              )}
-
-              <Box sx={{ mt: 3 }}>
-                <Button
-                  type="submit"
-                  variant="contained"
-                  disabled={loading}
-                  startIcon={loading ? <CircularProgress size={20} /> : previewOnly ? <Preview /> : <PlayArrow />}
-                  sx={{ mr: 2 }}
-                >
-                  {loading ? 'Processing...' : previewOnly ? 'Generate Preview' : 'Apply Orchestration'}
-                </Button>
-                <Button
-                  variant="outlined"
-                  onClick={() => navigate('/calendar')}
-                  disabled={loading}
-                >
-                  Cancel
-                </Button>
-              </Box>
-            </form>
-          </Paper>
-
-          {/* Preview Results */}
-          {result && (
-            <Paper sx={{ p: 3, mt: 3 }}>
-              <Typography variant="h6" gutterBottom>
-                Orchestration Preview Results
-              </Typography>
-              
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={3}>
-                  <Card>
-                    <CardContent>
-                      <Typography color="text.secondary" gutterBottom>
-                        Total Shifts
-                      </Typography>
-                      <Typography variant="h4">
-                        {result.total_shifts}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                  <Card>
-                    <CardContent>
-                      <Typography color="text.secondary" gutterBottom>
-                        Incidents Shifts
-                      </Typography>
-                      <Typography variant="h4" color="error">
-                        {result.incidents_shifts}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                  <Card>
-                    <CardContent>
-                      <Typography color="text.secondary" gutterBottom>
-                        Incidents-Standby Shifts
-                      </Typography>
-                      <Typography variant="h4" color="warning.main">
-                        {result.incidents_standby_shifts}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                  <Card>
-                    <CardContent>
-                      <Typography color="text.secondary" gutterBottom>
-                        Waakdienst Shifts
-                      </Typography>
-                      <Typography variant="h4" color="primary">
-                        {result.waakdienst_shifts}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                  <Card>
-                    <CardContent>
-                      <Typography color="text.secondary" gutterBottom>
-                        Engineers Assigned
-                      </Typography>
-                      <Typography variant="h4" color="success.main">
-                        {result.employees_assigned}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              </Grid>
-
-              {/* Duplicate Warnings */}
-              {(result.potential_duplicates && result.potential_duplicates.length > 0) && (
-                <Alert severity="warning" sx={{ mt: 3 }}>
-                  <Typography variant="h6" gutterBottom>
-                    Potential Duplicate Shifts Detected ({result.potential_duplicates.length})
-                  </Typography>
-                  <Typography variant="body2" paragraph>
-                    The following shifts already exist and would be duplicated if you apply this orchestration:
-                  </Typography>
-                  <Stack spacing={1}>
-                    {result.potential_duplicates.map((duplicate, index) => (
-                      <Chip
-                        key={index}
-                        label={`${duplicate.shift_type}: ${duplicate.assigned_employee} (${new Date(duplicate.start_datetime).toLocaleDateString()} - ${new Date(duplicate.end_datetime).toLocaleDateString()})`}
-                        color="warning"
-                        variant="outlined"
-                        size="small"
-                      />
-                    ))}
-                  </Stack>
-                </Alert>
-              )}
-
-              {(result.skipped_duplicates && result.skipped_duplicates.length > 0) && (
-                <Alert severity="info" sx={{ mt: 3 }}>
-                  <Typography variant="h6" gutterBottom>
-                    Skipped Duplicate Shifts ({result.skipped_duplicates.length})
-                  </Typography>
-                  <Typography variant="body2" paragraph>
-                    The following shifts were skipped because they already exist:
-                  </Typography>
-                  <Stack spacing={1}>
-                    {result.skipped_duplicates.map((duplicate, index) => (
-                      <Chip
-                        key={index}
-                        label={`${duplicate.shift_type}: ${duplicate.assigned_employee} (${new Date(duplicate.start_datetime).toLocaleDateString()} - ${new Date(duplicate.end_datetime).toLocaleDateString()})`}
-                        color="info"
-                        variant="outlined"
-                        size="small"
-                      />
-                    ))}
-                  </Stack>
-                </Alert>
-              )}
-
-              <Box sx={{ mt: 3 }}>
-                <Typography variant="h6" gutterBottom>
-                  Fairness Distribution
-                </Typography>
-                <Stack direction="row" spacing={1} flexWrap="wrap">
-                  {Object.entries(result.fairness_scores || {}).map(([employee, score]) => (
-                    <Chip
-                      key={employee}
-                      label={`${employee}: ${score.toFixed(1)}`}
-                      color={score > result.average_fairness ? 'warning' : 'success'}
-                      variant="outlined"
-                    />
-                  ))}
-                </Stack>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                  Average Fairness Score: {result.average_fairness.toFixed(2)}
-                </Typography>
-              </Box>
-
-              <Box sx={{ mt: 3 }}>
-                <Button
-                  variant="contained"
-                  color="success"
-                  startIcon={<CheckCircle />}
-                  onClick={handleApplyPreview}
-                  disabled={loading}
-                  sx={{ mr: 2 }}
-                >
-                  Apply This Schedule
-                </Button>
-                <Button
-                  variant="outlined"
-                  onClick={() => navigate('/calendar')}
-                >
-                  View Calendar
-                </Button>
-              </Box>
-            </Paper>
-          )}
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={scheduleIncidentsStandby}
+                    onChange={(e)=>{setScheduleIncidentsStandby(e.target.checked); setScheduleIncidents(false); setScheduleWaakdienst(false);}}
+                  />
+                }
+                label="Incidents-Standby"
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={scheduleWaakdienst}
+                    onChange={(e)=>{setScheduleWaakdienst(e.target.checked); setScheduleIncidents(false); setScheduleIncidentsStandby(false);}}
+                  />
+                }
+                label="Waakdienst"
+              />
+            </Stack>
+          </Grid>
+          <Grid item xs={12}>
+            <Stack direction="row" spacing={1}>
+              <Button
+                variant="contained"
+                startIcon={<Preview />}
+                onClick={handleSubmit}
+                disabled={!selectedTeam || loading}
+              >
+                Preview
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={<CheckCircle />}
+                onClick={handleApplyPreview}
+                disabled={!result || loading}
+              >
+                Apply
+              </Button>
+            </Stack>
+          </Grid>
         </Grid>
+        {result && (
+          <Alert severity="info" sx={{ mt: 2 }}>Preview ready: {result.total_shifts} shifts. Apply to create.</Alert>
+        )}
+      </Paper>
 
-        <Grid item xs={12} md={4}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                System Information
-              </Typography>
-              <Typography variant="body2" paragraph>
-                The orchestrator will assign shifts based on:
-              </Typography>
-              <ul>
-                <li>Employee availability toggles</li>
-                <li>Fair distribution algorithms</li>
-                <li>Existing shift assignments</li>
-                <li>Leave requests and conflicts</li>
-              </ul>
-            </CardContent>
-          </Card>
-
-          <Card sx={{ mt: 2 }}>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Shift Types
-              </Typography>
-              <Box sx={{ mb: 2 }}>
-                <Chip label="Incidents" color="error" sx={{ mr: 1 }} />
-                <Typography variant="body2" component="span">
-                  Monday-Friday, 8:00-17:00
-                </Typography>
-              </Box>
-              <Box>
-                <Chip label="Waakdienst" color="primary" sx={{ mr: 1 }} />
-                <Typography variant="body2" component="span">
-                  Evenings, nights & weekends
-                </Typography>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+      <Paper sx={{ p: 2 }}>
+        <Typography variant="h6">Rolling planning controls</Typography>
+        <Typography variant="body2" color="text.secondary">Enable or disable auto-rolling per shift type for the selected team.</Typography>
+        <Stack direction="row" spacing={2} sx={{ mt: 1, flexWrap: 'wrap' }}>
+          {(['incidents','incidents_standby','waakdienst'] as const).map(st => (
+            <Stack key={st} direction="row" spacing={1} alignItems="center">
+              <Chip label={st} />
+              <Button
+                size="small"
+                variant={rollingEnabled?.[st] ? 'contained' : 'outlined'}
+                onClick={()=>toggleRolling(st, !rollingEnabled?.[st])}
+                disabled={!selectedTeam}
+              >
+                {rollingEnabled?.[st] ? 'Disable' : 'Enable'}
+              </Button>
+            </Stack>
+          ))}
+        </Stack>
+      </Paper>
     </Box>
   );
 };

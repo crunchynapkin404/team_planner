@@ -30,6 +30,44 @@
         </div>
     </div>
 
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Automatic Scheduling (Rolling Horizon)</h5>
+                    <small class="text-muted">Anchor-aligned, idempotent; respects team prefs & holidays</small>
+                </div>
+                <div class="card-body">
+                    <form method="post" action="{% url 'orchestrators:run_horizon_now' %}">
+                        {% csrf_token %}
+                        <div class="row g-3 align-items-end">
+                            <div class="col-md-2">
+                                <label for="months" class="form-label">Months to extend</label>
+                                <input type="number" min="1" max="12" class="form-control" id="months" name="months" value="{{ default_months|default:6 }}">
+                            </div>
+                            <div class="col-md-7">
+                                <label for="teams" class="form-label">Teams (optional)</label>
+                                <select id="teams" name="teams" class="form-select" multiple>
+                                    {% for t in teams %}
+                                        <option value="{{ t.id }}">{{ t.department.name }} – {{ t.name }}</option>
+                                    {% endfor %}
+                                </select>
+                                <small class="form-text text-muted">Leave empty to run for all active teams</small>
+                            </div>
+                            <div class="col-md-2 form-check mt-4">
+                                <input class="form-check-input" type="checkbox" id="dry_run" name="dry_run" checked>
+                                <label class="form-check-label" for="dry_run">Dry run (no DB writes)</label>
+                            </div>
+                            <div class="col-md-1">
+                                <button type="submit" class="btn btn-success w-100">Run Now</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="card">
         <div class="card-header">
             <h5>Recent Orchestrations</h5>

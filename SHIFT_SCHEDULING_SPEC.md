@@ -3,10 +3,13 @@
 
 ## 1. Incidents Shifts (Primary Coverage)
 
-### **Coverage Times**
-- **Days**: Monday through Friday
-- **Hours**: 08:00 - 17:00 (9 hours per day)
-- **Timezone**: [SPECIFY YOUR TIMEZONE HERE]
+### **Shift Details**
+- **Monday**: 08:00 - 17:00 (9 hours)
+- **Tuesday**: 08:00 - 17:00 (9 hours)
+- **Wednesday**: 08:00 - 17:00 (9 hours)
+- **Thursday**: 08:00 - 17:00 (9 hours)
+- **Friday**: 08:00 - 17:00 (9 hours)
+
 
 ### **Assignment Pattern**
 - **Type**: Daily individual shifts (5 separate shifts per week)
@@ -30,10 +33,12 @@
 
 ## 2. Incidents-Standby Shifts (Secondary Coverage)
 
-### **Coverage Times**
-- **Days**: Monday through Friday (identical to Incidents shifts)
-- **Hours**: 08:00 - 17:00 (9 hours per day)
-- **Timezone**: [SPECIFY YOUR TIMEZONE HERE]
+### **Shift Details**
+- **Monday**: 08:00 - 17:00 (9 hours)
+- **Tuesday**: 08:00 - 17:00 (9 hours)
+- **Wednesday**: 08:00 - 17:00 (9 hours)
+- **Thursday**: 08:00 - 17:00 (9 hours)
+- **Friday**: 08:00 - 17:00 (9 hours)
 
 ### **Assignment Pattern**
 - **Type**: Daily individual shifts (5 separate shifts per week)
@@ -90,14 +95,7 @@
 - **Full weekends**: Covered by Waakdienst
 - **Business hours (Mon-Fri 08:00-17:00)**: Covered by Incidents (not Waakdienst)
 
-## Summary of Coverage
 
-| Time Period | Primary Coverage | Secondary Coverage |
-|-------------|------------------|-------------------|
-| Mon-Fri 08:00-17:00 | Incidents | Incidents-Standby (if assigned) |
-| Mon-Fri 17:00-08:00 | Waakdienst | None |
-| Sat-Sun (all day) | Waakdienst | None |
-| Handover: Wed 08:00-17:00 | Incidents + Waakdienst transition | Incidents-Standby (if assigned) |
 
 ## Important Notes
 

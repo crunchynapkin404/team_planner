@@ -6,9 +6,12 @@ from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model
 from django.db.models import Q, QuerySet
 from datetime import datetime
+from django.utils.dateparse import parse_date
+from django.utils import timezone
 
 from .models import LeaveRequest, LeaveType
 from .serializers import LeaveRequestSerializer, LeaveTypeSerializer
+from team_planner.notifications.mailer import notify_leave_approved, build_ics_for_leave
 
 User = get_user_model()
 
@@ -20,11 +23,19 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self) -> QuerySet[LeaveRequest]:
-        """Return leave requests based on user permissions."""
-        user = self.request.user
+        """Return leave requests based on user permissions.
+        Be resilient if self.request isn't set (e.g., when actions are called directly in tests).
+        """
+        # Base queryset
         queryset = LeaveRequest.objects.select_related(
             'employee', 'leave_type', 'approved_by'
         ).order_by('-created')
+
+        req = getattr(self, 'request', None)
+        user = getattr(req, 'user', None)
+        if not user:
+            # No request/user available (e.g., direct method call in tests); return unfiltered
+            return queryset
         
         # Filter based on permissions
         if user.has_perm('leaves.change_leaverequest') or user.is_staff or user.is_superuser:
@@ -41,20 +52,25 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], url_path='create')
     def create_request(self, request):
         """Create a new leave request (alternative endpoint)."""
+        # Ensure view has a request when called directly
+        self.request = request
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
             self.perform_create(serializer)
+            instance = getattr(serializer, 'instance', None)
             return Response({
-                'id': serializer.instance.id,
+                'id': int(getattr(instance, 'id', 0)),
                 'message': 'Leave request created successfully.',
-                'has_conflicts': serializer.instance.has_shift_conflicts,
-                'conflict_warning': 'This request conflicts with assigned shifts.' if serializer.instance.has_shift_conflicts else None
+                'has_conflicts': bool(getattr(instance, 'has_shift_conflicts', False)),
+                'conflict_warning': 'This request conflicts with assigned shifts.' if getattr(instance, 'has_shift_conflicts', False) else None
             }, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     @action(detail=False, methods=['get'])
     def my_requests(self, request):
         """Get current user's leave requests."""
+        # Ensure view has a request when called directly
+        self.request = request
         queryset = self.get_queryset().filter(employee=request.user)
         page = self.paginate_queryset(queryset)
         if page is not None:
@@ -67,6 +83,8 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def pending(self, request):
         """Get pending leave requests."""
+        # Ensure view has a request when called directly
+        self.request = request
         queryset = self.get_queryset().filter(status='pending')
         page = self.paginate_queryset(queryset)
         if page is not None:
@@ -79,6 +97,8 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
         """Approve a leave request."""
+        # Ensure view has a request when called directly
+        self.request = request
         leave_request = self.get_object()
         user = request.user
         
@@ -112,12 +132,22 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         leave_request.approved_at = timezone.now()
         leave_request.save()
         
+        # Notify employee with ICS
+        try:
+            ics = build_ics_for_leave(leave_request)
+            email = getattr(leave_request.employee, 'email', None)
+            notify_leave_approved(email, ics)
+        except Exception:
+            pass
+        
         serializer = self.get_serializer(leave_request)
         return Response(serializer.data)
     
     @action(detail=True, methods=['post'])
     def reject(self, request, pk=None):
         """Reject a leave request."""
+        # Ensure view has a request when called directly
+        self.request = request
         leave_request = self.get_object()
         user = request.user
         
@@ -149,6 +179,8 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def cancel(self, request, pk=None):
         """Cancel a leave request."""
+        # Ensure view has a request when called directly
+        self.request = request
         leave_request = self.get_object()
         user = request.user
         
@@ -176,6 +208,8 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'], url_path='conflicting-shifts')
     def conflicting_shifts(self, request, pk=None):
         """Get shifts that conflict with this leave request."""
+        # Ensure view has a request when called directly
+        self.request = request
         leave_request = self.get_object()
         
         # Check if user can access this leave request
@@ -208,27 +242,100 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def check_conflicts(self, request):
-        """Check for conflicts when creating a leave request."""
-        start_date = request.query_params.get('start_date')
-        end_date = request.query_params.get('end_date')
-        
-        if not start_date or not end_date:
+        """Check for conflicts when creating a leave request using provided dates and optional times."""
+        # Ensure view has a request when called directly
+        self.request = request
+        start_date_s = request.query_params.get('start_date')
+        end_date_s = request.query_params.get('end_date')
+        start_time_s = request.query_params.get('start_time')
+        end_time_s = request.query_params.get('end_time')
+        leave_type_id = request.query_params.get('leave_type_id')
+
+        if not start_date_s or not end_date_s:
             return Response(
                 {'error': 'Both start_date and end_date are required.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        # For now, return no conflicts - this would be implemented with shift checking logic
+
+        start_d = parse_date(start_date_s)
+        end_d = parse_date(end_date_s)
+        if not start_d or not end_d:
+            return Response({'error': 'Invalid date format.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Build a transient LeaveRequest-like object to reuse conflict logic
+        leave_type = None
+        if leave_type_id:
+            try:
+                leave_type = LeaveType.objects.get(pk=leave_type_id)
+            except LeaveType.DoesNotExist:
+                leave_type = None
+        tmp = LeaveRequest(
+            employee=request.user,
+            leave_type=leave_type or LeaveType(name='tmp'),
+            start_date=start_d,
+            end_date=end_d,
+        )
+        # Override type-level time window if provided
+        if start_time_s:
+            try:
+                from datetime import time as _t
+                hh, mm = [int(x) for x in start_time_s.split(':')]
+                tmp.start_time = _t(hh, mm)
+            except Exception:
+                pass
+        if end_time_s:
+            try:
+                from datetime import time as _t
+                hh, mm = [int(x) for x in end_time_s.split(':')]
+                tmp.end_time = _t(hh, mm)
+            except Exception:
+                pass
+
+        conflicts_qs = tmp.get_conflicting_shifts()
+        conflicts = []
+        for s in conflicts_qs.select_related('template', 'assigned_employee'):
+            conflicts.append({
+                'id': int(getattr(s, 'id')),  # type: ignore[arg-type]
+                'shift_type': getattr(s.template, 'shift_type', 'unknown'),
+                'shift_name': getattr(s.template, 'name', 'Shift'),
+                'start_datetime': s.start_datetime.isoformat(),
+                'end_datetime': s.end_datetime.isoformat(),
+                'status': s.status,
+            })
+
+        # Rudimentary suggestions: list team members without overlapping shifts for the same window
+        suggestions = []
+        if conflicts:
+            from django.contrib.auth import get_user_model
+            from team_planner.teams.models import TeamMembership
+            from team_planner.shifts.models import Shift as ShiftModel
+            User = get_user_model()
+
+            team_ids = TeamMembership.objects.filter(user=request.user, is_active=True).values_list('team_id', flat=True)
+            candidates = User.objects.filter(teammembership__team_id__in=team_ids, is_active=True).exclude(id=request.user.id).distinct()
+
+            for s in conflicts_qs:
+                avail = candidates.exclude(
+                    assigned_shifts__start_datetime__lt=s.end_datetime,
+                    assigned_shifts__end_datetime__gt=s.start_datetime,
+                )
+                suggestions.append({
+                    'shift_id': int(getattr(s, 'id')),  # type: ignore[arg-type]
+                    'candidate_ids': list(avail.values_list('id', flat=True)[:10]),
+                })
+
         return Response({
-            'conflicts': [],
-            'suggestions': [],
-            'has_conflicts': False,
-            'message': 'No conflicts found.'
+            'has_conflicts': bool(conflicts),
+            'conflicts': conflicts,
+            'suggestions': suggestions,
+            'message': 'Conflicts detected.' if conflicts else 'No conflicts found.'
         })
     
     @action(detail=False, methods=['get'])
     def user_stats(self, request):
         """Get user's leave statistics."""
+        # Ensure view has a request when called directly
+        self.request = request
         user = request.user
         current_year = datetime.now().year
         

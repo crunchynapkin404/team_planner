@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
 
-from .models import EmployeeProfile, EmployeeSkill, LeaveBalance
+from .models import EmployeeProfile, EmployeeSkill, LeaveBalance, RecurringLeavePattern
 
 
 @admin.register(EmployeeSkill)
@@ -79,3 +79,55 @@ class LeaveBalanceAdmin(admin.ModelAdmin):
     def remaining_days(self, obj):
         return obj.remaining_days
     remaining_days.short_description = _("Remaining Days")  # type: ignore
+
+
+@admin.register(RecurringLeavePattern)
+class RecurringLeavePatternAdmin(admin.ModelAdmin):
+    list_display = [
+        "employee", 
+        "name", 
+        "get_pattern_display",
+        "coverage_type", 
+        "is_active",
+        "effective_from",
+        "effective_until"
+    ]
+    list_filter = [
+        "day_of_week", 
+        "frequency", 
+        "coverage_type", 
+        "is_active",
+        "effective_from"
+    ]
+    search_fields = ["employee__username", "employee__first_name", "employee__last_name", "name"]
+    ordering = ["employee__username", "day_of_week", "coverage_type"]
+    
+    fieldsets = (
+        (_("Employee & Pattern"), {
+            "fields": ("employee", "name", "is_active")
+        }),
+        (_("Pattern Configuration"), {
+            "fields": ("day_of_week", "frequency", "coverage_type", "pattern_start_date"),
+            "description": _("Define when and how often this pattern occurs")
+        }),
+        (_("Effective Period"), {
+            "fields": ("effective_from", "effective_until"),
+            "description": _("When this pattern is active (leave until blank for permanent)")
+        }),
+        (_("Additional Information"), {
+            "fields": ("notes",),
+            "classes": ("collapse",)
+        }),
+    )
+    
+    def get_pattern_display(self, obj):
+        frequency_display = "Every" if obj.frequency == 'weekly' else "Every 2nd"
+        day_name = obj.get_day_of_week_display()
+        return f"{frequency_display} {day_name}"
+    get_pattern_display.short_description = _("Pattern")  # type: ignore
+    
+    def save_model(self, request, obj, form, change):
+        # Auto-set pattern_start_date if not provided
+        if not obj.pattern_start_date:
+            obj.pattern_start_date = obj.effective_from
+        super().save_model(request, obj, form, change)

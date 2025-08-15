@@ -190,3 +190,162 @@ class LeaveBalance(TimeStampedModel):
     @property
     def is_exhausted(self):
         return self.remaining_days <= 0
+
+
+class RecurringLeavePattern(TimeStampedModel):
+    """Employee recurring leave patterns for profile-based scheduling."""
+    
+    class DayOfWeek(models.IntegerChoices):
+        MONDAY = 0, _("Monday")
+        TUESDAY = 1, _("Tuesday")
+        WEDNESDAY = 2, _("Wednesday")
+        THURSDAY = 3, _("Thursday")
+        FRIDAY = 4, _("Friday")
+    
+    class Frequency(models.TextChoices):
+        WEEKLY = "weekly", _("Every Week")
+        BIWEEKLY = "biweekly", _("Every 2 Weeks")
+    
+    class CoverageType(models.TextChoices):
+        FULL_DAY = "full_day", _("Full Day (8:00-17:00)")
+        MORNING = "morning", _("Morning Only (8:00-12:00)")
+        AFTERNOON = "afternoon", _("Afternoon Only (12:00-17:00)")
+    
+    employee = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="recurring_leave_patterns",
+        verbose_name=_("Employee"),
+    )
+    
+    name = models.CharField(
+        _("Pattern Name"),
+        max_length=100,
+        help_text=_("Descriptive name for this pattern (e.g., 'Monday Mornings Off')")
+    )
+    
+    day_of_week = models.IntegerField(
+        _("Day of Week"),
+        choices=DayOfWeek.choices,
+        help_text=_("Which day of the week this pattern applies to")
+    )
+    
+    frequency = models.CharField(
+        _("Frequency"),
+        max_length=20,
+        choices=Frequency.choices,
+        default=Frequency.WEEKLY,
+        help_text=_("How often this pattern repeats")
+    )
+    
+    coverage_type = models.CharField(
+        _("Coverage Type"),
+        max_length=20,
+        choices=CoverageType.choices,
+        default=CoverageType.FULL_DAY,
+        help_text=_("What part of the day is affected")
+    )
+    
+    # For biweekly patterns, we need to track which week this started
+    pattern_start_date = models.DateField(
+        _("Pattern Start Date"),
+        help_text=_("Date when this pattern first applies (important for biweekly patterns)")
+    )
+    
+    effective_from = models.DateField(
+        _("Effective From"),
+        help_text=_("When this pattern becomes active")
+    )
+    
+    effective_until = models.DateField(
+        _("Effective Until"),
+        null=True,
+        blank=True,
+        help_text=_("When this pattern expires (blank = permanent)")
+    )
+    
+    is_active = models.BooleanField(
+        _("Is Active"),
+        default=True,
+        help_text=_("Whether this pattern is currently in effect")
+    )
+    
+    notes = models.TextField(
+        _("Notes"),
+        blank=True,
+        help_text=_("Additional notes about this pattern")
+    )
+    
+    class Meta:
+        verbose_name = _("Recurring Leave Pattern")
+        verbose_name_plural = _("Recurring Leave Patterns")
+        ordering = ["employee__username", "day_of_week", "coverage_type"]
+    
+    def __str__(self):
+        frequency_display = "Every" if self.frequency == self.Frequency.WEEKLY else "Every 2nd"
+        day_name = self.get_day_of_week_display()
+        coverage_display = self.get_coverage_type_display()
+        return f"{self.employee.get_full_name()}: {frequency_display} {day_name} {coverage_display}"
+    
+    def get_absolute_url(self):
+        return reverse("employees:pattern_detail", kwargs={"pk": self.pk})
+    
+    def get_hours_affected(self):
+        """Return number of hours this pattern affects per occurrence."""
+        if self.coverage_type == self.CoverageType.FULL_DAY:
+            return 9  # 8:00-17:00
+        elif self.coverage_type in [self.CoverageType.MORNING, self.CoverageType.AFTERNOON]:
+            return 4  # Half day
+        return 0
+    
+    def applies_to_date(self, check_date):
+        """Check if this pattern applies to a specific date."""
+        # Check if date is within effective range
+        if check_date < self.effective_from:
+            return False
+        if self.effective_until and check_date > self.effective_until:
+            return False
+        if not self.is_active:
+            return False
+        
+        # Check if it's the right day of week
+        if check_date.weekday() != self.day_of_week:
+            return False
+        
+        # For weekly patterns, always applies if it's the right day
+        if self.frequency == self.Frequency.WEEKLY:
+            return True
+        
+        # For biweekly patterns, check if it's the right week
+        if self.frequency == self.Frequency.BIWEEKLY:
+            days_since_start = (check_date - self.pattern_start_date).days
+            weeks_since_start = days_since_start // 7
+            return weeks_since_start % 2 == 0
+        
+        return False
+    
+    def get_affected_hours_for_date(self, check_date):
+        """Get the specific hours affected by this pattern on a given date."""
+        if not self.applies_to_date(check_date):
+            return None
+        
+        from datetime import time, datetime
+        from django.utils import timezone
+        
+        if self.coverage_type == self.CoverageType.FULL_DAY:
+            start_datetime = timezone.make_aware(datetime.combine(check_date, time(8, 0)))
+            end_datetime = timezone.make_aware(datetime.combine(check_date, time(17, 0)))
+        elif self.coverage_type == self.CoverageType.MORNING:
+            start_datetime = timezone.make_aware(datetime.combine(check_date, time(8, 0)))
+            end_datetime = timezone.make_aware(datetime.combine(check_date, time(12, 0)))
+        elif self.coverage_type == self.CoverageType.AFTERNOON:
+            start_datetime = timezone.make_aware(datetime.combine(check_date, time(12, 0)))
+            end_datetime = timezone.make_aware(datetime.combine(check_date, time(17, 0)))
+        else:
+            return None
+        
+        return {
+            'start_datetime': start_datetime,
+            'end_datetime': end_datetime,
+            'hours': self.get_hours_affected()
+        }

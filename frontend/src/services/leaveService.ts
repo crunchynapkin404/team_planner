@@ -61,6 +61,7 @@ export interface LeaveRequest {
   has_shift_conflicts: boolean;
   can_be_approved: boolean;
   blocking_message?: string;
+  within_active_window?: boolean;
   approved_by?: Employee;
   approved_at?: string;
   rejection_reason?: string;

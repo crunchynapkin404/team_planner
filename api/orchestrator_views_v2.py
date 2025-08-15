@@ -1,0 +1,410 @@
+"""
+Simplified API views for the orchestrator system Phase 5.
+
+This module provides basic REST API endpoints that work with the current
+clean architecture implementation.
+"""
+
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_page
+from datetime import datetime, date, timedelta
+import logging
+import asyncio
+
+# Infrastructure imports
+from infrastructure.services import (
+    create_unit_of_work, 
+    map_django_user_to_employee,
+    map_django_shift_to_domain
+)
+
+# Application layer imports
+from application.use_cases import (
+    OrchestrateScheduleUseCase,
+    SchedulingRequest
+)
+
+# Domain imports
+from domain.value_objects import (
+    DateRange, TimeRange, EmployeeId, ShiftType,
+    TeamConfiguration, BusinessHoursConfiguration
+)
+from domain.services import FairnessCalculator, ConflictDetector
+
+# Django imports
+from team_planner.shifts.models import Shift
+from team_planner.employees.models import EmployeeProfile
+from team_planner.teams.models import Team
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+logger = logging.getLogger(__name__)
+
+
+class OrchestratorAPIViewSet(viewsets.ViewSet):
+    """
+    API ViewSet for orchestrator operations.
+    
+    Provides endpoints for:
+    - Schedule orchestration
+    - Shift coverage reporting
+    - Employee availability
+    - System health checks
+    """
+    
+    permission_classes = [IsAuthenticated]
+    
+    @action(detail=False, methods=['post'])
+    def orchestrate_schedule(self, request):
+        """
+        Orchestrate shifts for a given date range and department.
+        
+        POST /api/orchestrator/orchestrate_schedule/
+        {
+            "start_date": "2025-08-12",
+            "end_date": "2025-08-19", 
+            "department_id": "1",
+            "options": {
+                "dry_run": false
+            }
+        }
+        """
+        try:
+            # Parse request data
+            data = request.data
+            start_date = datetime.strptime(data['start_date'], '%Y-%m-%d').date()
+            end_date = datetime.strptime(data['end_date'], '%Y-%m-%d').date()
+            department_id = data['department_id']
+            options = data.get('options', {})
+            
+            # Create date range
+            date_range = DateRange(start=start_date, end=end_date)
+            
+            # Create scheduling request
+            scheduling_request = SchedulingRequest(
+                date_range=date_range,
+                department_ids=[department_id],
+                priority_shifts=None,
+                exclude_employees=None,
+                force_assignments=None,
+                constraints={
+                    'dry_run': options.get('dry_run', False),
+                    'allow_partial': True
+                }
+            )
+            
+            # Execute orchestration
+            result = asyncio.run(self._run_orchestration(scheduling_request))
+            
+            # Format response
+            response_data = {
+                'success': result.success,
+                'statistics': {
+                    'assignments_made': len(result.assignments),
+                    'unassigned_shifts': len(result.unassigned_shifts),
+                    'conflicts_detected': len(result.conflicts_detected),
+                    'warnings': len(result.warnings)
+                },
+                'assignments': [
+                    {
+                        'assignment_id': str(assignment.id),
+                        'shift_id': assignment.shift_id.value if assignment.shift_id else None,
+                        'employee_id': assignment.employee_id.value,
+                        'auto_assigned': assignment.auto_assigned
+                    }
+                    for assignment in result.assignments
+                ],
+                'conflicts': [
+                    {
+                        'type': conflict.get('type', 'unknown'),
+                        'message': conflict.get('message', 'Unknown conflict')
+                    }
+                    for conflict in result.conflicts_detected
+                ],
+                'warnings': result.warnings
+            }
+            
+            return Response(response_data, status=status.HTTP_200_OK)
+            
+        except ValueError as e:
+            logger.error(f"Validation error in orchestrate_schedule: {e}")
+            return Response(
+                {'error': 'Validation error', 'message': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(f"Error in orchestrate_schedule: {e}")
+            return Response(
+                {'error': 'Internal server error', 'message': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    async def _run_orchestration(self, scheduling_request: SchedulingRequest):
+        """Run the orchestration asynchronously."""
+        # Create UnitOfWork
+        uow = create_unit_of_work()
+        
+        # Create domain services with default config
+        default_config = TeamConfiguration(
+            timezone='Europe/Amsterdam',
+            business_hours=BusinessHoursConfiguration(),
+            waakdienst_start_day=2,
+            waakdienst_start_hour=17,
+            waakdienst_end_hour=8,
+            skip_incidents_on_holidays=True,
+            holiday_calendar='NL'
+        )
+        
+        fairness_calculator = FairnessCalculator(default_config)
+        conflict_detector = ConflictDetector()
+        
+        # Create and execute use case
+        use_case = OrchestrateScheduleUseCase(uow, fairness_calculator, conflict_detector)
+        
+        result = await use_case.execute(scheduling_request)
+        return result
+    
+    @action(detail=False, methods=['get'])
+    @method_decorator(cache_page(60 * 5))  # Cache for 5 minutes
+    def shift_coverage(self, request):
+        """
+        Get shift coverage status for a date range.
+        
+        GET /api/orchestrator/shift_coverage/?start_date=2025-08-01&end_date=2025-08-31&department_id=1
+        """
+        try:
+            # Parse query parameters
+            start_date_str = request.query_params.get('start_date')
+            end_date_str = request.query_params.get('end_date')
+            department_id = request.query_params.get('department_id')
+            
+            if not all([start_date_str, end_date_str]):
+                return Response(
+                    {'error': 'start_date and end_date are required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+            
+            # Get shifts in date range
+            shifts = Shift.objects.filter(
+                start_datetime__date__gte=start_date,
+                start_datetime__date__lte=end_date
+            ).select_related('template', 'assigned_employee')
+            
+            # Group by date and shift type
+            coverage_by_date = {}
+            for shift in shifts:
+                shift_date = shift.start_datetime.date().isoformat()
+                shift_type = shift.template.shift_type
+                
+                if shift_date not in coverage_by_date:
+                    coverage_by_date[shift_date] = {}
+                
+                if shift_type not in coverage_by_date[shift_date]:
+                    coverage_by_date[shift_date][shift_type] = {
+                        'total_shifts': 0,
+                        'assigned_shifts': 0,
+                        'unassigned_shifts': 0,
+                        'assignments': []
+                    }
+                
+                coverage_by_date[shift_date][shift_type]['total_shifts'] += 1
+                
+                if shift.assigned_employee:
+                    coverage_by_date[shift_date][shift_type]['assigned_shifts'] += 1
+                    coverage_by_date[shift_date][shift_type]['assignments'].append({
+                        'shift_id': shift.pk,
+                        'employee_id': shift.assigned_employee.pk,
+                        'employee_name': shift.assigned_employee.get_full_name(),
+                        'start_time': shift.start_datetime.isoformat(),
+                        'end_time': shift.end_datetime.isoformat()
+                    })
+                else:
+                    coverage_by_date[shift_date][shift_type]['unassigned_shifts'] += 1
+            
+            response_data = {
+                'date_range': {
+                    'start_date': start_date.isoformat(),
+                    'end_date': end_date.isoformat()
+                },
+                'department_id': department_id,
+                'coverage_by_date': coverage_by_date,
+                'summary': {
+                    'total_days': (end_date - start_date).days + 1,
+                    'days_with_coverage': len(coverage_by_date),
+                    'days_without_coverage': max(0, (end_date - start_date).days + 1 - len(coverage_by_date))
+                }
+            }
+            
+            return Response(response_data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Error in shift_coverage: {e}")
+            return Response(
+                {'error': 'Internal server error', 'message': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=False, methods=['get'])
+    def employee_availability(self, request):
+        """
+        Get employee availability for a specific time range.
+        
+        GET /api/orchestrator/employee_availability/?start_date=2025-08-01&end_date=2025-08-31&shift_type=incidents
+        """
+        try:
+            # Parse query parameters
+            start_date_str = request.query_params.get('start_date')
+            end_date_str = request.query_params.get('end_date')
+            shift_type_str = request.query_params.get('shift_type', 'incidents')
+            
+            if not all([start_date_str, end_date_str]):
+                return Response(
+                    {'error': 'start_date and end_date are required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+            shift_type = ShiftType(shift_type_str)
+            
+            # Create time range for the date range
+            start_datetime = datetime.combine(start_date, datetime.min.time())
+            end_datetime = datetime.combine(end_date, datetime.max.time())
+            time_range = TimeRange(
+                start=start_datetime,
+                end=end_datetime,
+                timezone='Europe/Amsterdam'  # Default timezone
+            )
+            
+            # Get all employees and check availability
+            users = User.objects.select_related('employee_profile').filter(
+                employee_profile__status='active'
+            )
+            
+            available_employees = []
+            for user in users:
+                employee = map_django_user_to_employee(user)
+                if employee.is_available_for_shift(shift_type, time_range):
+                    available_employees.append({
+                        'employee_id': employee.id.value,
+                        'name': employee.name,
+                        'email': employee.email,
+                        'available_for_incidents': employee.available_for_incidents,
+                        'available_for_waakdienst': employee.available_for_waakdienst,
+                        'current_assignments_count': len(employee.current_assignments)
+                    })
+            
+            response_data = {
+                'time_range': {
+                    'start': start_datetime.isoformat(),
+                    'end': end_datetime.isoformat()
+                },
+                'shift_type': shift_type.value,
+                'available_employees': available_employees,
+                'total_available': len(available_employees)
+            }
+            
+            return Response(response_data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Error in employee_availability: {e}")
+            return Response(
+                {'error': 'Internal server error', 'message': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class OrchestratorStatusView(viewsets.ViewSet):
+    """
+    Status and health check endpoints for the orchestrator system.
+    """
+    
+    permission_classes = [IsAuthenticated]
+    
+    @action(detail=False, methods=['get'])
+    def health(self, request):
+        """
+        Health check endpoint for the orchestrator system.
+        
+        GET /api/orchestrator-status/health/
+        """
+        try:
+            # Basic health checks
+            health_status = {
+                'status': 'healthy',
+                'timestamp': datetime.utcnow().isoformat(),
+                'version': '2.0.0',
+                'components': {
+                    'database': 'healthy',
+                    'orchestrator': 'healthy',
+                    'cache': 'healthy'
+                }
+            }
+            
+            # Check database connectivity
+            try:
+                User.objects.count()
+            except Exception:
+                health_status['components']['database'] = 'unhealthy'
+                health_status['status'] = 'degraded'
+            
+            return Response(health_status, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {
+                    'status': 'unhealthy',
+                    'error': str(e),
+                    'timestamp': datetime.utcnow().isoformat()
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+    
+    @action(detail=False, methods=['get'])
+    def metrics(self, request):
+        """
+        Get orchestrator metrics and statistics.
+        
+        GET /api/orchestrator-status/metrics/
+        """
+        try:
+            # Calculate basic metrics
+            total_employees = User.objects.filter(
+                employee_profile__status='active'
+            ).count()
+            
+            total_shifts = Shift.objects.filter(
+                start_datetime__gte=datetime.now() - timedelta(days=30)
+            ).count()
+            
+            assigned_shifts = Shift.objects.filter(
+                start_datetime__gte=datetime.now() - timedelta(days=30),
+                assigned_employee__isnull=False
+            ).count()
+            
+            assignment_rate = (assigned_shifts / total_shifts * 100) if total_shifts > 0 else 0
+            
+            metrics = {
+                'total_active_employees': total_employees,
+                'total_shifts_last_30_days': total_shifts,
+                'assigned_shifts_last_30_days': assigned_shifts,
+                'assignment_rate_percentage': round(assignment_rate, 2),
+                'unassigned_shifts_last_30_days': total_shifts - assigned_shifts,
+                'timestamp': datetime.utcnow().isoformat()
+            }
+            
+            return Response(metrics, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Error in metrics: {e}")
+            return Response(
+                {'error': 'Internal server error', 'message': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

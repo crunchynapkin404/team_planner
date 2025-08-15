@@ -9,8 +9,8 @@ class UserSerializer(serializers.ModelSerializer):
     """Serializer for User model (minimal)."""
     display_name = serializers.SerializerMethodField()
     
-    class Meta:
-        model = User
+    class Meta:  # type: ignore[override]
+        model = User  # type: ignore[assignment]
         fields = ['id', 'email', 'username', 'first_name', 'last_name', 'display_name']
     
     def get_display_name(self, obj):
@@ -29,8 +29,8 @@ class LeaveTypeSerializer(serializers.ModelSerializer):
     """Serializer for LeaveType model."""
     conflict_handling_display = serializers.CharField(source='get_conflict_handling_display', read_only=True)
     
-    class Meta:
-        model = LeaveType
+    class Meta:  # type: ignore[override]
+        model = LeaveType  # type: ignore[assignment]
         fields = [
             'id', 'name', 'description', 'default_days_per_year', 'requires_approval', 
             'is_paid', 'is_active', 'color', 'conflict_handling', 'conflict_handling_display',
@@ -50,14 +50,17 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
     has_shift_conflicts = serializers.ReadOnlyField()
     effective_start_time = serializers.SerializerMethodField()
     effective_end_time = serializers.SerializerMethodField()
+    blocking_message = serializers.SerializerMethodField()
+    within_active_window = serializers.SerializerMethodField()
     
-    class Meta:
-        model = LeaveRequest
+    class Meta:  # type: ignore[override]
+        model = LeaveRequest  # type: ignore[assignment]
         fields = [
             'id', 'employee', 'leave_type', 'leave_type_id', 
             'start_date', 'end_date', 'start_time', 'end_time', 'days_requested', 'reason', 
             'status', 'status_display', 'approved_by', 'approved_at', 'rejection_reason', 
-            'created', 'modified', 'can_be_approved', 'has_shift_conflicts',
+            'created', 'modified', 'can_be_approved', 'has_shift_conflicts', 'blocking_message',
+            'within_active_window',
             'is_recurring', 'recurrence_type', 'recurrence_type_display', 'recurrence_end_date',
             'parent_request', 'effective_start_time', 'effective_end_time'
         ]
@@ -76,6 +79,17 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
         """Get the effective end time for this leave request."""
         time_obj = obj.get_effective_end_time()
         return time_obj.strftime('%H:%M') if time_obj else None
+
+    def get_blocking_message(self, obj):
+        """Provide reason why approval is blocked, if any."""
+        return obj.get_blocking_message()
+
+    def get_within_active_window(self, obj):
+        """Whether the leave is within the active planning window."""
+        try:
+            return obj.is_within_active_planning_window()
+        except Exception:
+            return False
     
     def validate(self, attrs):
         """Validate leave request data."""

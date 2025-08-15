@@ -60,6 +60,228 @@ const TimelinePage: React.FC = () => {
   const [selectedShifts, setSelectedShifts] = useState<CalendarEvent[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
 
+    // Fetch recurring leave patterns and generate calendar events
+  const fetchRecurringLeavePatterns = async (): Promise<CalendarEvent[]> => {
+    console.log('🔍 Starting fetchRecurringLeavePatterns...');
+    try {
+      // Get current user info 
+      console.log('📱 Fetching current user...');
+      const userResponse = await apiClient.get('/api/users/me/') as any;
+      const currentUser = userResponse.data;
+      console.log('👤 Current user:', currentUser);
+      
+      // All users can see all patterns - we need to fetch all users' patterns
+      console.log('👥 Fetching all users...');
+      const usersResponse = await apiClient.get('/api/users/') as any;
+      console.log('Users response:', usersResponse);
+      
+      // Extract users from paginated response
+      let allUsers = [];
+      console.log('🔍 Response structure analysis:', {
+        hasData: !!usersResponse.data,
+        hasResults: !!usersResponse.results,
+        topLevelKeys: Object.keys(usersResponse),
+        dataKeys: usersResponse.data ? Object.keys(usersResponse.data) : 'no data prop'
+      });
+      
+      // The data is directly on usersResponse, not usersResponse.data
+      if (usersResponse.results && Array.isArray(usersResponse.results)) {
+        allUsers = usersResponse.results;
+        console.log('✅ Extracted from usersResponse.results');
+      } else if (usersResponse.data && usersResponse.data.results && Array.isArray(usersResponse.data.results)) {
+        allUsers = usersResponse.data.results;
+        console.log('✅ Extracted from usersResponse.data.results');
+      } else if (Array.isArray(usersResponse)) {
+        allUsers = usersResponse;
+        console.log('✅ Used usersResponse directly as array');
+      } else {
+        console.log('❌ Could not extract users from response');
+      }
+      
+      console.log('All users:', allUsers);
+      
+      if (allUsers.length === 0) {
+        console.warn('⚠️ No users found!');
+        return [];
+      }
+      
+      const allPatterns: any[] = [];
+      // Fetch patterns for each user
+      console.log(`🔄 Fetching patterns for ${allUsers.length} users...`);
+      for (const user of allUsers) {
+        console.log(`🔍 Fetching patterns for user: ${user.username} (ID: ${user.id})`);
+        try {
+          const userPatternsResponse = await apiClient.get(`/api/users/${user.id}/recurring-leave-patterns/`) as any;
+          console.log(`📋 Full patterns response for user ${user.username}:`, userPatternsResponse);
+          console.log(`📋 Response structure:`, {
+            hasData: !!userPatternsResponse.data,
+            hasResults: !!userPatternsResponse.results,
+            isArray: Array.isArray(userPatternsResponse),
+            topKeys: Object.keys(userPatternsResponse)
+          });
+          
+          // Try multiple access patterns for the response
+          let patterns = null;
+          if (userPatternsResponse.results && Array.isArray(userPatternsResponse.results)) {
+            patterns = userPatternsResponse.results;
+            console.log(`✅ Using userPatternsResponse.results (${patterns.length} patterns)`);
+          } else if (userPatternsResponse.data && Array.isArray(userPatternsResponse.data)) {
+            patterns = userPatternsResponse.data;
+            console.log(`✅ Using userPatternsResponse.data (${patterns.length} patterns)`);
+          } else if (Array.isArray(userPatternsResponse)) {
+            patterns = userPatternsResponse;
+            console.log(`✅ Using userPatternsResponse directly (${patterns.length} patterns)`);
+          } else {
+            console.log(`❌ No patterns found in response structure`);
+          }
+          
+          if (patterns && Array.isArray(patterns)) {
+            allPatterns.push(...patterns);
+            console.log(`✅ Added ${patterns.length} patterns for ${user.username}`);
+          }
+        } catch (err) {
+          // User might not have patterns or permission issues, skip
+          console.warn(`❌ Error fetching patterns for user ${user.username}:`, err);
+        }
+      }
+      console.log('📊 All patterns collected:', allPatterns);
+      
+      // If no patterns found from all users, try the original endpoint as fallback
+      if (allPatterns.length === 0) {
+        console.log('🔄 No patterns found from all users, trying fallback...');
+        try {
+          const fallbackResponse = await apiClient.get('/api/recurring-leave-patterns/') as any;
+          console.log('📋 Fallback response:', fallbackResponse.data);
+          if (fallbackResponse.data && Array.isArray(fallbackResponse.data)) {
+            allPatterns.push(...fallbackResponse.data);
+            console.log(`✅ Added ${fallbackResponse.data.length} patterns from fallback`);
+          }
+        } catch (fallbackErr) {
+          console.error('❌ Fallback also failed:', fallbackErr);
+        }
+      }
+      const patternsResponse = { data: allPatterns };
+      
+      console.log(`🎯 Processing ${allPatterns.length} patterns into calendar events...`);
+      const recurringEvents: CalendarEvent[] = [];
+      
+      if (patternsResponse.data && Array.isArray(patternsResponse.data)) {
+        for (const pattern of patternsResponse.data) {
+          console.log('🔄 Processing pattern:', pattern);
+          // Find the user object for this pattern's employee ID
+          const patternOwner = allUsers.find(user => user.id === pattern.employee) || currentUser;
+          console.log('👤 Pattern owner:', patternOwner);
+          const events = generateRecurringLeaveEvents(pattern, patternOwner);
+          console.log(`📅 Generated ${events.length} events for pattern ${pattern.id}`);
+          recurringEvents.push(...events);
+        }
+      }
+      
+      console.log(`✅ Total recurring events generated: ${recurringEvents.length}`);
+      return recurringEvents;
+    } catch (err) {
+      console.error('❌ Failed to fetch recurring leave patterns:', err);
+      return [];
+    }
+  };
+
+  // Generate calendar events from a recurring leave pattern
+  const generateRecurringLeaveEvents = (pattern: any, user: any): CalendarEvent[] => {
+    const events: CalendarEvent[] = [];
+    
+    const today = new Date();
+    const effectiveFrom = new Date(pattern.effective_from);
+    const effectiveUntil = pattern.effective_until ? new Date(pattern.effective_until) : new Date(today.getFullYear() + 1, today.getMonth(), today.getDate());
+    const patternStartDate = new Date(pattern.pattern_start_date);
+    
+    // Get engineer name from user data
+    let engineerName = user.display_name;
+    if (user.first_name && user.last_name) {
+      engineerName = `${user.first_name} ${user.last_name}`;
+    } else if (user.display_name && user.display_name !== user.username) {
+      engineerName = user.display_name;
+    } else {
+      const username = user.username || user.display_name;
+      if (username && username.includes('.')) {
+        engineerName = username.split('.').map((part: string) => 
+          part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
+        ).join(' ');
+      } else {
+        engineerName = username;
+      }
+    }
+    
+    // Calculate occurrence dates
+    let currentDate = new Date(Math.max(effectiveFrom.getTime(), patternStartDate.getTime()));
+    
+    // Adjust to the correct day of week
+    const dayOfWeek = pattern.day_of_week; // 0 = Monday, 1 = Tuesday, etc.
+    const currentDayOfWeek = (currentDate.getDay() + 6) % 7; // Convert Sunday=0 to Monday=0
+    const daysToAdd = (dayOfWeek - currentDayOfWeek + 7) % 7;
+    currentDate.setDate(currentDate.getDate() + daysToAdd);
+    
+    // Generate events up to effective_until date
+    while (currentDate <= effectiveUntil) {
+      // Check if this date should be included based on frequency
+      const shouldInclude = pattern.frequency === 'weekly' || 
+        (pattern.frequency === 'biweekly' && 
+         Math.floor((currentDate.getTime() - patternStartDate.getTime()) / (1000 * 60 * 60 * 24 * 7)) % 2 === 0);
+      
+      if (shouldInclude && currentDate >= effectiveFrom) {
+        const eventDate = new Date(currentDate);
+        
+        // Create event based on coverage type
+        let startTime = new Date(eventDate);
+        let endTime = new Date(eventDate);
+        
+        switch (pattern.coverage_type) {
+          case 'morning':
+            startTime.setHours(8, 0, 0, 0);
+            endTime.setHours(12, 0, 0, 0);
+            break;
+          case 'afternoon':
+            startTime.setHours(12, 0, 0, 0);
+            endTime.setHours(17, 0, 0, 0);
+            break;
+          case 'full_day':
+          default:
+            startTime.setHours(8, 0, 0, 0);
+            endTime.setHours(17, 0, 0, 0);
+            break;
+        }
+        
+        const event: CalendarEvent = {
+          id: `recurring-${pattern.id}-${eventDate.toISOString().split('T')[0]}`,
+          title: `${pattern.name} (Recurring)`,
+          start: startTime.toISOString().split('T')[0],
+          end: endTime.toISOString().split('T')[0],
+          backgroundColor: '#2e7d32', // Green for approved/recurring leave
+          borderColor: '#2e7d32',
+          extendedProps: {
+            eventType: 'leave' as const,
+            engineerName: engineerName,
+            engineerId: user.id.toString(),
+            status: 'approved',
+            reason: pattern.notes || 'Recurring leave pattern',
+            days_requested: pattern.coverage_type === 'full_day' ? 1 : 0.5,
+            leave_type_name: pattern.name,
+            leave_type_color: '#2e7d32',
+            isRecurring: true,
+            recurringPatternId: pattern.id,
+            coverage_type: pattern.coverage_type,
+          }
+        };
+        
+        events.push(event);
+      }
+      
+      // Move to next week
+      currentDate.setDate(currentDate.getDate() + 7);
+    }
+    
+    return events;
+  };
+
   // Fetch shifts and leave requests from API
   const fetchData = async () => {
     setLoading(true);
@@ -73,6 +295,11 @@ const TimelinePage: React.FC = () => {
       // Fetch leave requests
       const leavesResponse = await apiClient.get(API_CONFIG.ENDPOINTS.LEAVES_REQUESTS);
       const leavesData = leavesResponse as { results: any[] };
+      
+      // Fetch recurring leave patterns
+      console.log('🔄 Fetching recurring leave patterns...');
+      const recurringPatternsEvents = await fetchRecurringLeavePatterns();
+      console.log('📋 Recurring patterns events received:', recurringPatternsEvents);
       
       // Convert leave requests to calendar events
       const leaveEvents: CalendarEvent[] = leavesData.results.map((leave: any) => {
@@ -118,12 +345,15 @@ const TimelinePage: React.FC = () => {
         };
       });
       
+      // Combine regular leave events with recurring pattern events
+      const allLeaveEvents = [...leaveEvents, ...recurringPatternsEvents];
+      
       setAllShiftsData(shiftsData.events);
-      setAllLeavesData(leaveEvents);
+      setAllLeavesData(allLeaveEvents);
       
       // Use today's date for initial processing
       const today = new Date();
-      processTimelineData(shiftsData.events, leaveEvents, today);
+      processTimelineData(shiftsData.events, allLeaveEvents, today);
     } catch (err) {
       setError('Failed to load data');
       console.error('Error loading data:', err);
@@ -133,7 +363,7 @@ const TimelinePage: React.FC = () => {
   };
 
   // Helper function to get color based on leave status
-  const getLeaveColor = (status: string, leaveTypeColor: string) => {
+  const getLeaveColor = (status: string, _leaveTypeColor?: string) => {
     switch (status) {
       case 'approved':
         return '#2e7d32'; // Darker green for approved (different from incidents_standby)
@@ -674,7 +904,7 @@ const TimelinePage: React.FC = () => {
                                   additionalInfo = ` - Day ${daysDiff + 1}/${totalDays}`;
                                 }
                                 
-                                const label = `${leave.extendedProps?.leave_type_name || 'Leave'} (${leave.extendedProps?.status || 'Unknown'})${additionalInfo}`;
+                                const label = `${leave.extendedProps?.leave_type_name || 'Leave'} (${leave.extendedProps?.isRecurring ? 'Recurring' : (leave.extendedProps?.status || 'Unknown')})${additionalInfo}`;
                                 
                                 return (
                                   <Chip

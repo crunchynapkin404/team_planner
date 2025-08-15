@@ -17,15 +17,112 @@
   
   
 </h1>
+
 <form class="form-horizontal"
       method="post"
       action="{% url 'users:update' %}">
   {% csrf_token %}
-  {{ form|crispy }}
-  <div class="control-group">
+  
+  <!-- Basic Profile Information -->
+  <fieldset>
+    <legend>Basic Information</legend>
+    {{ form|crispy }}
+  </fieldset>
+  
+  <!-- Recurring Leave Patterns Section -->
+  <fieldset class="mt-4">
+    <legend>Recurring Leave Patterns</legend>
+    <p class="help-text">
+      Configure your regular recurring leave patterns. These patterns will be automatically 
+      considered when scheduling shifts. You can have multiple patterns active at the same time.
+      <br><strong>Note:</strong> Leave this section empty if you have no recurring leave patterns.
+    </p>
+    
+    {{ recurring_patterns_formset.management_form }}
+    
+    <div id="pattern-forms">
+      {% for pattern_form in recurring_patterns_formset %}
+        <div class="pattern-form card mb-3">
+          <div class="card-header">
+            <h5 class="card-title">
+              Pattern {{ forloop.counter }}
+              {% if pattern_form.instance.pk %}
+                ({{ pattern_form.instance.name|default:"Unnamed Pattern" }})
+              {% endif %}
+            </h5>
+          </div>
+          <div class="card-body">
+            {{ pattern_form|crispy }}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+    
+    <button type="button" class="btn btn-secondary" id="add-pattern">
+      Add Another Pattern
+    </button>
+  </fieldset>
+  
+  <div class="control-group mt-4">
     <div class="controls">
-      <button type="submit" class="btn btn-primary">Update</button>
+      <button type="submit" class="btn btn-primary">Update Profile</button>
+      <a href="{% url 'users:detail' username=user.username %}" class="btn btn-secondary">Cancel</a>
     </div>
   </div>
 </form>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Handle dynamic formset functionality
+    const addButton = document.getElementById('add-pattern');
+    const patternFormsContainer = document.getElementById('pattern-forms');
+    const totalFormsInput = document.getElementById('id_recurring_leave_patterns-TOTAL_FORMS');
+    
+    if (addButton && patternFormsContainer && totalFormsInput) {
+        addButton.addEventListener('click', function() {
+            const formCount = parseInt(totalFormsInput.value);
+            const emptyFormTemplate = document.querySelector('.pattern-form').cloneNode(true);
+            
+            // Update form indices
+            const formRegex = /recurring_leave_patterns-\d+-/g;
+            emptyFormTemplate.innerHTML = emptyFormTemplate.innerHTML.replace(formRegex, `recurring_leave_patterns-${formCount}-`);
+            
+            // Clear form values
+            const inputs = emptyFormTemplate.querySelectorAll('input, select, textarea');
+            inputs.forEach(input => {
+                if (input.type === 'checkbox') {
+                    input.checked = false;
+                } else {
+                    input.value = '';
+                }
+            });
+            
+            // Update header
+            emptyFormTemplate.querySelector('.card-title').textContent = `Pattern ${formCount + 1}`;
+            
+            // Add to container
+            patternFormsContainer.appendChild(emptyFormTemplate);
+            
+            // Update total forms count
+            totalFormsInput.value = formCount + 1;
+        });
+        
+        // Handle pattern deletion
+        patternFormsContainer.addEventListener('click', function(e) {
+            if (e.target.matches('.delete-pattern') || e.target.closest('.delete-pattern')) {
+                e.preventDefault();
+                const patternForm = e.target.closest('.pattern-form');
+                const deleteCheckbox = patternForm.querySelector('input[name*="DELETE"]');
+                
+                if (deleteCheckbox) {
+                    deleteCheckbox.checked = true;
+                    patternForm.style.display = 'none';
+                } else {
+                    patternForm.remove();
+                }
+            }
+        });
+    }
+});
+</script>
 {% endblock content %}

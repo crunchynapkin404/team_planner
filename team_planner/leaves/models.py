@@ -3,7 +3,9 @@ from django.conf import settings
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+from datetime import timedelta
 
 from team_planner.contrib.sites.models import TimeStampedModel
 
@@ -63,7 +65,7 @@ class LeaveType(TimeStampedModel):
         help_text=_("End time for partial day leave (leave blank for full day)"),
     )
     
-    class Meta:
+    class Meta(TimeStampedModel.Meta):
         verbose_name = _("Leave Type")
         verbose_name_plural = _("Leave Types")
         ordering = ["name"]
@@ -89,7 +91,7 @@ class LeaveRequest(TimeStampedModel):
         WEEKLY = "weekly", _("Weekly")
         MONTHLY = "monthly", _("Monthly")
         CUSTOM = "custom", _("Custom Pattern")
-    
+
     employee = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -168,33 +170,33 @@ class LeaveRequest(TimeStampedModel):
     approved_at = models.DateTimeField(_("Approved At"), null=True, blank=True)
     rejection_reason = models.TextField(_("Rejection Reason"), blank=True)
     
-    class Meta:
+    class Meta(TimeStampedModel.Meta):
         verbose_name = _("Leave Request")
         verbose_name_plural = _("Leave Requests")
         ordering = ["-created", "-start_date"]
-    
+
     def __str__(self):
         return (
             f"{self.employee.get_full_name()} - "
             f"{self.leave_type.name} "
             f"({self.start_date} to {self.end_date})"
         )
-    
+
     def get_absolute_url(self):
         return reverse("leaves:request_detail", kwargs={"pk": self.pk})
-    
+
     @property
     def is_pending(self):
         return self.status == self.Status.PENDING
-    
+
     @property
     def is_approved(self):
         return self.status == self.Status.APPROVED
-    
+
     @property
     def can_be_cancelled(self):
         return self.status in [self.Status.PENDING, self.Status.APPROVED]
-    
+
     def get_conflicting_shifts(self):
         """Get shifts that conflict with this leave request based on leave type."""
         from team_planner.shifts.models import Shift
@@ -228,19 +230,22 @@ class LeaveRequest(TimeStampedModel):
             )
             
             # Also check if shifts overlap with the time period
-            conflicting_shifts = []
+            conflicting_ids: list[int] = []
             for shift in daytime_shifts:
                 shift_start_time = shift.start_datetime.time()
                 shift_end_time = shift.end_datetime.time()
                 
                 # Check if shift time overlaps with leave time
                 if (shift_start_time < leave_end_time and shift_end_time > leave_start_time):
-                    conflicting_shifts.append(shift.id)
+                    # pk is available on all models; cast to int for typing
+                    pk_val = shift.pk
+                    if pk_val is not None:
+                        conflicting_ids.append(int(pk_val))
             
-            return daytime_shifts.filter(id__in=conflicting_shifts)
+            return daytime_shifts.filter(id__in=conflicting_ids)
         
         return shifts_queryset
-    
+
     @property 
     def has_shift_conflicts(self):
         """Check if this leave request conflicts with assigned shifts."""
@@ -298,28 +303,35 @@ class LeaveRequest(TimeStampedModel):
         from datetime import time
         return self.end_time or self.leave_type.end_time or time(17, 0)
     
+    def is_within_active_planning_window(self) -> bool:
+        """Return True if this leave lies within the next 6 months horizon."""
+        today = timezone.now().date()
+        horizon_end = today + timedelta(days=6*30)
+        return self.start_date <= horizon_end
+
     def can_be_approved(self):
-        """Check if leave request can be approved (no unresolved shift conflicts)."""
+        """Check if leave request can be approved (no unresolved shift conflicts).
+        If within 6-month active plan, require manual swap approvals first.
+        """
         if self.status != self.Status.PENDING:
             return False
-        
-        # If there are conflicting shifts, check if they have pending/approved swap requests
+
+        # All conflicting shifts must be addressed
         conflicting_shifts = self.get_conflicting_shifts()
-        
-        for shift in conflicting_shifts:
-            # Check if shift has an approved swap request that resolves the conflict
+
+        if not conflicting_shifts.exists():
+            return True
+
+        # Within active window: require approved swap requests for each conflicting shift
+        if self.is_within_active_planning_window():
             from team_planner.shifts.models import SwapRequest
-            
-            approved_swaps = SwapRequest.objects.filter(
-                requesting_shift=shift,
-                status='approved'
-            )
-            
-            if not approved_swaps.exists():
-                # No approved swap for this shift - leave cannot be approved
-                return False
-        
-        return True
+            for shift in conflicting_shifts:
+                if not SwapRequest.objects.filter(requesting_shift=shift, status=SwapRequest.Status.APPROVED).exists():
+                    return False
+            return True
+
+        # Outside active window: can pass if conflicts exist but policy may be looser (default to False)
+        return False
     
     def get_blocking_message(self):
         """Get message explaining why leave request is blocked."""
@@ -331,6 +343,11 @@ class LeaveRequest(TimeStampedModel):
         
         if shift_count == 1:
             shift = conflicting_shifts.first()
+            if not shift:
+                return (
+                    "There is a shift conflict with this leave request. "
+                    "Please arrange a swap before the leave can be approved."
+                )
             return (
                 f"You have a {shift.template.get_shift_type_display()} shift "
                 f"on {shift.start_datetime.date()} that conflicts with this leave request. "
@@ -341,6 +358,45 @@ class LeaveRequest(TimeStampedModel):
                 f"You have {shift_count} shifts during this leave period that need to be "
                 f"swapped with other employees before the leave can be approved."
             )
+
+    def create_recurring_instances(self):
+        """Create child leave requests for a recurring pattern.
+        Currently supports weekly recurrence until recurrence_end_date.
+        Returns the list of created child requests.
+        """
+        if not self.is_recurring:
+            return []
+        if self.recurrence_type != self.RecurrenceType.WEEKLY:
+            return []
+        if not self.recurrence_end_date:
+            return []
+
+        from datetime import timedelta
+        instances: list[LeaveRequest] = []  # type: ignore[name-defined]
+        # Start from one period after the original request
+        delta = timedelta(weeks=1)
+        next_start = self.start_date + delta
+        next_end = self.end_date + delta
+
+        while next_start <= self.recurrence_end_date:
+            child = LeaveRequest.objects.create(
+                employee=self.employee,
+                leave_type=self.leave_type,
+                start_date=next_start,
+                end_date=next_end,
+                start_time=self.start_time,
+                end_time=self.end_time,
+                days_requested=self.days_requested,
+                reason=self.reason,
+                status=self.Status.PENDING,
+                is_recurring=False,
+                recurrence_type=self.RecurrenceType.NONE,
+                parent_request=self,
+            )
+            instances.append(child)
+            next_start += delta
+            next_end += delta
+        return instances
 
 
 class Holiday(TimeStampedModel):
@@ -355,7 +411,7 @@ class Holiday(TimeStampedModel):
         help_text=_("Whether this holiday repeats annually"),
     )
     
-    class Meta:
+    class Meta(TimeStampedModel.Meta):
         verbose_name = _("Holiday")
         verbose_name_plural = _("Holidays")
         ordering = ["date"]

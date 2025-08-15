@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Fairness Report{% endblock %}
+{% block content %}
+<div class="container">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>Fairness Report</h1>
+    <a href="{% url 'orchestrators:dashboard' %}" class="btn btn-secondary">Back to Dashboard</a>
+  </div>
+  <div class="card mb-3">
+    <div class="card-body">
+      <p>
+        <strong>Averages</strong> — Incidents: {{ avg_incidents|floatformat:2 }}, Waakdienst: {{ avg_waakdienst|floatformat:2 }}, Total: {{ avg_total|floatformat:2 }}
+      </p>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">Per-employee</div>
+    <div class="card-body table-responsive">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Employee</th>
+            <th>Incidents</th>
+            <th>Waakdienst</th>
+            <th>Total</th>
+            <th>Eligible (Incidents)</th>
+            <th>Eligible (Waakdienst)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in fairness_data %}
+          <tr>
+            <td>{{ row.employee.user.get_full_name|default:row.employee.user.username }}</td>
+            <td>{{ row.incidents_count }}</td>
+            <td>{{ row.waakdienst_count }}</td>
+            <td>{{ row.total_assignments }}</td>
+            <td>{% if row.available_incidents %}<span class="badge bg-success">Yes</span>{% else %}<span class="badge bg-secondary">No</span>{% endif %}</td>
+            <td>{% if row.available_waakdienst %}<span class="badge bg-success">Yes</span>{% else %}<span class="badge bg-secondary">No</span>{% endif %}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="6" class="text-center text-muted">No data</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

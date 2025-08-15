@@ -1,4 +1,3 @@
-import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { apiClient } from './services/apiClient';
 import LoginForm from './components/auth/LoginForm';
@@ -7,9 +6,8 @@ import MainLayout from './components/layout/MainLayout';
 import Dashboard from './pages/Dashboard';
 import CalendarPage from './pages/CalendarPage';
 import TimelinePage from './pages/TimelinePage';
-import OrchestratorPage from './pages/OrchestratorPage';
+import UnifiedOrchestratorPage from './pages/UnifiedOrchestratorPage';
 import FairnessDashboard from './pages/FairnessDashboard';
-import OrchestratorHistory from './pages/OrchestratorHistory';
 import UserManagement from './pages/UserManagement';
 import TeamManagement from './pages/TeamManagement';
 import ProfileManagement from './pages/ProfileManagement';
@@ -128,7 +126,18 @@ function App() {
         element={
           <PrivateRoute>
             <MainLayout>
-              <OrchestratorPage />
+              <UnifiedOrchestratorPage />
+            </MainLayout>
+          </PrivateRoute>
+        }
+      />
+      
+      <Route
+        path="/orchestrator-dashboard"
+        element={
+          <PrivateRoute>
+            <MainLayout>
+              <UnifiedOrchestratorPage />
             </MainLayout>
           </PrivateRoute>
         }
@@ -150,7 +159,7 @@ function App() {
         element={
           <PrivateRoute>
             <MainLayout>
-              <OrchestratorHistory />
+              <UnifiedOrchestratorPage />
             </MainLayout>
           </PrivateRoute>
         }

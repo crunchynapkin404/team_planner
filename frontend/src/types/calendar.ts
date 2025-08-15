@@ -20,6 +20,10 @@ export interface CalendarEvent {
     days_requested?: number;
     leave_type_name?: string;
     leave_type_color?: string;
+    isRecurring?: boolean;
+    recurringPatternId?: number;
+    coverage_type?: string;
+    description?: string;
   };
 }
 

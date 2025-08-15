@@ -48,10 +48,24 @@ interface FairnessData {
   incidents_count: number;
   waakdienst_count: number;
   total_assignments: number;
-  fairness_score: number;
+  fairness_score: number; // legacy overall
   available_incidents: boolean;
   available_waakdienst: boolean;
   last_assignment_date: string | null;
+  incidents_standby_count?: number;
+  expected_hours?: number;
+  deviation_hours?: number;
+  // new per-type fields
+  overall_fairness?: number | null;
+  incidents_fairness?: number | null;
+  standby_fairness?: number | null;
+  waakdienst_fairness?: number | null;
+  expected_incidents_hours?: number;
+  deviation_incidents_hours?: number;
+  expected_standby_hours?: number;
+  deviation_standby_hours?: number;
+  expected_waakdienst_hours?: number;
+  deviation_waakdienst_hours?: number;
 }
 
 interface FairnessMetrics {
@@ -64,6 +78,7 @@ interface FairnessMetrics {
     good: number; // 70-89
     fair: number; // 50-69
     poor: number; // 0-49
+    na?: number; // no expectation and no assignments
   };
 }
 
@@ -126,6 +141,7 @@ const FairnessDashboard: React.FC = () => {
   const chartData = fairnessData.map(emp => ({
     name: emp.employee_name.length > 10 ? emp.employee_name.substring(0, 10) + '...' : emp.employee_name,
     incidents: emp.incidents_count,
+    incidents_standby: emp.incidents_standby_count || 0,
     waakdienst: emp.waakdienst_count,
     fairness: emp.fairness_score,
   }));
@@ -135,6 +151,7 @@ const FairnessDashboard: React.FC = () => {
     { name: 'Good (70-89)', value: metrics.fairness_distribution.good, color: '#2196f3' },
     { name: 'Fair (50-69)', value: metrics.fairness_distribution.fair, color: '#ff9800' },
     { name: 'Poor (0-49)', value: metrics.fairness_distribution.poor, color: '#f44336' },
+    ...(metrics.fairness_distribution.na !== undefined ? [{ name: 'N/A', value: metrics.fairness_distribution.na, color: '#9e9e9e' }] : []),
   ] : [];
 
   if (loading) {
@@ -216,7 +233,7 @@ const FairnessDashboard: React.FC = () => {
                   Avg Incidents
                 </Typography>
                 <Typography variant="h4" color="error">
-                  {metrics.average_incidents.toFixed(1)}
+                  {metrics.average_incidents.toFixed(1)} hours
                 </Typography>
               </CardContent>
             </Card>
@@ -228,7 +245,7 @@ const FairnessDashboard: React.FC = () => {
                   Avg Waakdienst
                 </Typography>
                 <Typography variant="h4" color="primary">
-                  {metrics.average_waakdienst.toFixed(1)}
+                  {metrics.average_waakdienst.toFixed(1)} hours
                 </Typography>
               </CardContent>
             </Card>
@@ -240,12 +257,18 @@ const FairnessDashboard: React.FC = () => {
                   Avg Total
                 </Typography>
                 <Typography variant="h4" color="success.main">
-                  {metrics.average_total.toFixed(1)}
+                  {metrics.average_total.toFixed(1)} hours
                 </Typography>
               </CardContent>
             </Card>
           </Grid>
         </Grid>
+      )}
+
+      {metrics && metrics.total_employees > 0 && fairnessData.every(e => (e.total_assignments ?? 0) === 0) && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          No assignments found in the selected period. Try expanding the time range or verify that shifts have been generated/applied.
+        </Alert>
       )}
 
       <Grid container spacing={3}>
@@ -261,8 +284,9 @@ const FairnessDashboard: React.FC = () => {
                 <XAxis dataKey="name" />
                 <YAxis />
                 <RechartsTooltip />
-                <Bar dataKey="incidents" fill="#f44336" name="Incidents" />
-                <Bar dataKey="waakdienst" fill="#2196f3" name="Waakdienst" />
+                <Bar dataKey="incidents" fill="#f44336" name="Incidents (h)" />
+                <Bar dataKey="incidents_standby" fill="#ff6d00" name="Standby (h)" />
+                <Bar dataKey="waakdienst" fill="#2196f3" name="Waakdienst (h)" />
               </BarChart>
             </ResponsiveContainer>
           </Paper>
@@ -307,11 +331,17 @@ const FairnessDashboard: React.FC = () => {
                 <TableHead>
                   <TableRow>
                     <TableCell>Employee</TableCell>
-                    <TableCell align="center">Incidents</TableCell>
-                    <TableCell align="center">Waakdienst</TableCell>
-                    <TableCell align="center">Total</TableCell>
-                    <TableCell align="center">Fairness Score</TableCell>
-                    <TableCell align="center">Status</TableCell>
+                    <TableCell align="center">Incidents (h)</TableCell>
+                    <TableCell align="center">Standby (h)</TableCell>
+                    <TableCell align="center">Waakdienst (h)</TableCell>
+                    <TableCell align="center">Total (h)</TableCell>
+                    <TableCell align="center">I Fair</TableCell>
+                    <TableCell align="center">S Fair</TableCell>
+                    <TableCell align="center">W Fair</TableCell>
+                    <TableCell align="center">Overall</TableCell>
+                    <TableCell align="center">I Δ (h)</TableCell>
+                    <TableCell align="center">S Δ (h)</TableCell>
+                    <TableCell align="center">W Δ (h)</TableCell>
                     <TableCell align="center">Availability</TableCell>
                     <TableCell align="center">Last Assignment</TableCell>
                   </TableRow>
@@ -326,7 +356,7 @@ const FairnessDashboard: React.FC = () => {
                       </TableCell>
                       <TableCell align="center">
                         <Chip
-                          label={employee.incidents_count}
+                          label={Number(employee.incidents_count ?? 0).toFixed(1)}
                           color="error"
                           variant="outlined"
                           size="small"
@@ -334,7 +364,15 @@ const FairnessDashboard: React.FC = () => {
                       </TableCell>
                       <TableCell align="center">
                         <Chip
-                          label={employee.waakdienst_count}
+                          label={Number(employee.incidents_standby_count ?? 0).toFixed(1)}
+                          color="warning"
+                          variant="outlined"
+                          size="small"
+                        />
+                      </TableCell>
+                      <TableCell align="center">
+                        <Chip
+                          label={Number(employee.waakdienst_count ?? 0).toFixed(1)}
                           color="primary"
                           variant="outlined"
                           size="small"
@@ -342,17 +380,58 @@ const FairnessDashboard: React.FC = () => {
                       </TableCell>
                       <TableCell align="center">
                         <Typography variant="body2" fontWeight="bold">
-                          {employee.total_assignments}
+                          {Number(employee.total_assignments ?? 0).toFixed(1)}
                         </Typography>
                       </TableCell>
                       <TableCell align="center">
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <LinearProgress
-                            variant="determinate"
-                            value={employee.fairness_score}
-                            color={getFairnessColor(employee.fairness_score)}
-                            sx={{ width: 60, height: 8, borderRadius: 4 }}
-                          />
+                        <Typography variant="body2" color="text.secondary">
+                          {employee.expected_hours !== undefined ? employee.expected_hours.toFixed(1) : '—'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="center">
+                        <Typography variant="body2" color={((employee.deviation_hours || 0) === 0 ? 'success.main' : (Math.abs(employee.deviation_hours || 0) <= 4 ? 'info.main' : Math.abs(employee.deviation_hours || 0) <= 12 ? 'warning.main' : 'error.main'))}>
+                          {employee.deviation_hours !== undefined ? (employee.deviation_hours > 0 ? '+' : '') + employee.deviation_hours.toFixed(1) : '—'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="center">
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, justifyContent: 'center' }}>
+                          <LinearProgress variant="determinate" value={employee.incidents_fairness ?? 0} color={getFairnessColor(employee.incidents_fairness ?? 0)} sx={{ width: 60, height: 8, borderRadius: 4 }} />
+                          <Typography variant="body2">{employee.incidents_fairness != null ? Math.round(employee.incidents_fairness) : '—'}</Typography>
+                        </Box>
+                      </TableCell>
+                      <TableCell align="center">
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, justifyContent: 'center' }}>
+                          <LinearProgress variant="determinate" value={employee.standby_fairness ?? 0} color={getFairnessColor(employee.standby_fairness ?? 0)} sx={{ width: 60, height: 8, borderRadius: 4 }} />
+                          <Typography variant="body2">{employee.standby_fairness != null ? Math.round(employee.standby_fairness) : '—'}</Typography>
+                        </Box>
+                      </TableCell>
+                      <TableCell align="center">
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, justifyContent: 'center' }}>
+                          <LinearProgress variant="determinate" value={employee.waakdienst_fairness ?? 0} color={getFairnessColor(employee.waakdienst_fairness ?? 0)} sx={{ width: 60, height: 8, borderRadius: 4 }} />
+                          <Typography variant="body2">{employee.waakdienst_fairness != null ? Math.round(employee.waakdienst_fairness) : '—'}</Typography>
+                        </Box>
+                      </TableCell>
+                      <TableCell align="center">
+                        <Chip label={employee.overall_fairness != null ? Math.round(employee.overall_fairness) : 'N/A'} color={getFairnessColor(employee.overall_fairness ?? 0)} size="small" />
+                      </TableCell>
+                      <TableCell align="center">
+                        <Typography variant="body2" color={((employee.deviation_incidents_hours || 0) === 0 ? 'success.main' : (Math.abs(employee.deviation_incidents_hours || 0) <= 4 ? 'info.main' : Math.abs(employee.deviation_incidents_hours || 0) <= 12 ? 'warning.main' : 'error.main'))}>
+                          {employee.deviation_incidents_hours !== undefined ? (employee.deviation_incidents_hours > 0 ? '+' : '') + Number(employee.deviation_incidents_hours).toFixed(1) : '—'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="center">
+                        <Typography variant="body2" color={((employee.deviation_standby_hours || 0) === 0 ? 'success.main' : (Math.abs(employee.deviation_standby_hours || 0) <= 4 ? 'info.main' : Math.abs(employee.deviation_standby_hours || 0) <= 12 ? 'warning.main' : 'error.main'))}>
+                          {employee.deviation_standby_hours !== undefined ? (employee.deviation_standby_hours > 0 ? '+' : '') + Number(employee.deviation_standby_hours).toFixed(1) : '—'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="center">
+                        <Typography variant="body2" color={((employee.deviation_waakdienst_hours || 0) === 0 ? 'success.main' : (Math.abs(employee.deviation_waakdienst_hours || 0) <= 12 ? 'info.main' : Math.abs(employee.deviation_waakdienst_hours || 0) <= 24 ? 'warning.main' : 'error.main'))}>
+                          {employee.deviation_waakdienst_hours !== undefined ? (employee.deviation_waakdienst_hours > 0 ? '+' : '') + Number(employee.deviation_waakdienst_hours).toFixed(1) : '—'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="center">
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, justifyContent: 'center' }}>
+                          <LinearProgress variant="determinate" value={employee.fairness_score} color={getFairnessColor(employee.fairness_score)} sx={{ width: 60, height: 8, borderRadius: 4 }} />
                           <Typography variant="body2">
                             {employee.fairness_score.toFixed(0)}
                           </Typography>
@@ -420,9 +499,7 @@ const FairnessDashboard: React.FC = () => {
       <Box sx={{ mt: 3 }}>
         <Alert severity="info" icon={<Info />}>
           <Typography variant="body2">
-            <strong>Fairness Scoring:</strong> Excellent (90-100) = Perfect distribution, 
-            Good (70-89) = Minor imbalance, Fair (50-69) = Moderate imbalance, 
-            Poor (0-49) = Significant imbalance requiring attention.
+            <strong>Fairness scoring</strong> compares assigned hours to expected hours based on each person's availability. Score = 100 − percentage deviation. Columns show Expected (h) and Δ Hours. Standby is included in totals.
           </Typography>
         </Alert>
       </Box>

@@ -180,8 +180,8 @@ class LeaveRequestIntegrationTestCase(TestCase):
             days_requested=3.0
         )
         
-        # User.get_full_name() returns "None None" since first_name/last_name are None
-        expected_str = f"None None - vacation ({leave_request.start_date} to {leave_request.end_date})"
+        # Our User model uses the single 'name' field for full name
+        expected_str = f"{self.user.get_full_name()} - vacation ({leave_request.start_date} to {leave_request.end_date})"
         self.assertEqual(str(leave_request), expected_str)
 
     def test_leave_request_status_choices(self):

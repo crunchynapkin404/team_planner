@@ -15,6 +15,7 @@ from django.urls import reverse
 from rest_framework.test import APITestCase
 from rest_framework import status
 import json
+from typing import Dict, cast
 
 from .models import OrchestrationRun, OrchestrationResult
 from .algorithms import ShiftOrchestrator, FairnessCalculator, ConstraintChecker
@@ -23,6 +24,7 @@ from team_planner.employees.models import EmployeeProfile
 from team_planner.shifts.models import Shift, ShiftTemplate, ShiftType
 from team_planner.leaves.models import LeaveRequest, LeaveType
 from team_planner.teams.models import Team, Department
+from .anchors import Period, next_weekday_time, waakdienst_periods, business_weeks
 
 User = get_user_model()
 
@@ -49,12 +51,12 @@ class FairnessCalculatorTestCase(TestCase):
     def test_calculate_fairness_score_perfect_distribution(self):
         """Test fairness score calculation with perfect distribution."""
         # Create equal assignments for all employees
-        assignments = {
-            self.users[0].pk: {'incidents': 2, 'incidents_standby': 1, 'waakdienst': 1},
-            self.users[1].pk: {'incidents': 2, 'incidents_standby': 1, 'waakdienst': 1},
-            self.users[2].pk: {'incidents': 2, 'incidents_standby': 1, 'waakdienst': 1},
-            self.users[3].pk: {'incidents': 2, 'incidents_standby': 1, 'waakdienst': 1},
-        }
+        assignments = cast(Dict[int, Dict[str, float]], {
+            self.users[0].pk: {'incidents': 2.0, 'incidents_standby': 1.0, 'waakdienst': 1.0},
+            self.users[1].pk: {'incidents': 2.0, 'incidents_standby': 1.0, 'waakdienst': 1.0},
+            self.users[2].pk: {'incidents': 2.0, 'incidents_standby': 1.0, 'waakdienst': 1.0},
+            self.users[3].pk: {'incidents': 2.0, 'incidents_standby': 1.0, 'waakdienst': 1.0},
+        })
         
         calculator = FairnessCalculator(self.start_date, self.end_date)
         fairness_scores = calculator.calculate_fairness_score(assignments)
@@ -66,12 +68,12 @@ class FairnessCalculatorTestCase(TestCase):
     def test_calculate_fairness_score_uneven_distribution(self):
         """Test fairness score calculation with uneven distribution."""
         # Create uneven assignments
-        assignments = {
-            self.users[0].pk: {'incidents': 4, 'incidents_standby': 2, 'waakdienst': 2},
-            self.users[1].pk: {'incidents': 1, 'incidents_standby': 0, 'waakdienst': 0},
-            self.users[2].pk: {'incidents': 2, 'incidents_standby': 1, 'waakdienst': 1},
-            self.users[3].pk: {'incidents': 1, 'incidents_standby': 1, 'waakdienst': 1},
-        }
+        assignments = cast(Dict[int, Dict[str, float]], {
+            self.users[0].pk: {'incidents': 4.0, 'incidents_standby': 2.0, 'waakdienst': 2.0},
+            self.users[1].pk: {'incidents': 1.0, 'incidents_standby': 0.0, 'waakdienst': 0.0},
+            self.users[2].pk: {'incidents': 2.0, 'incidents_standby': 1.0, 'waakdienst': 1.0},
+            self.users[3].pk: {'incidents': 1.0, 'incidents_standby': 1.0, 'waakdienst': 1.0},
+        })
         
         calculator = FairnessCalculator(self.start_date, self.end_date)
         fairness_scores = calculator.calculate_fairness_score(assignments)
@@ -542,3 +544,134 @@ class IntegrationTestCase(TestCase):
         self.assertIsNotNone(run.completed_at)
         
         print(f"Integration test: Created {final_shift_count - initial_shift_count} shifts")
+
+
+class AnchorHelpersTestCase(TestCase):
+    def setUp(self):
+        # Team with default preferences (Wed 17 → next Wed 08) in Europe/Amsterdam
+        self.department = Department.objects.create(name="Ops")
+        self.team = Team.objects.create(name="NOC", department=self.department)
+
+    def test_next_weekday_time_basic(self):
+        tz = timezone.get_current_timezone()
+        ref = timezone.make_aware(datetime(2025, 1, 6, 7, 0))  # Mon 07:00
+        nxt = next_weekday_time(ref, 0, 8, tz=tz)  # Next Mon 08:00 strictly after
+        self.assertEqual(nxt.weekday(), 0)
+        self.assertEqual(nxt.hour, 8)
+        self.assertGreater(nxt, ref)
+
+    def test_waakdienst_periods_no_partial(self):
+        # Start inside a waakdienst period; should start at next start anchor
+        start_at = timezone.make_aware(datetime(2025, 1, 8, 18, 0))  # Wed 18:00 (inside period)
+        end_before = timezone.make_aware(datetime(2025, 1, 30, 0, 0))
+        periods = waakdienst_periods(start_at, end_before, team=self.team)
+        self.assertTrue(all(p.start < p.end for p in periods))
+        self.assertTrue(all(p.end <= end_before for p in periods))
+        # Ensure first period starts after the ref time (no partial inclusion)
+        self.assertGreaterEqual(periods[0].start, next_weekday_time(start_at, 2, 17, tz=timezone.get_current_timezone()))
+
+    def test_business_weeks_mon_fri(self):
+        start_at = timezone.make_aware(datetime(2025, 3, 3, 10, 0))  # Mon 10:00
+        end_before = timezone.make_aware(datetime(2025, 3, 24, 0, 0))
+        weeks = business_weeks(start_at, end_before)
+        self.assertTrue(all(w.start.weekday() == 0 and w.start.hour == 8 for w in weeks))
+        self.assertTrue(all(w.end.weekday() == 4 and w.end.hour == 17 for w in weeks))
+        # No partial periods beyond end_before
+        self.assertTrue(all(w.end <= end_before for w in weeks))
+
+    def test_dst_transition(self):
+        # Cover EU DST start (last Sun of Mar) and end (last Sun of Oct)
+        # Ensure anchors stay on wall clock times
+        march_ref = timezone.make_aware(datetime(2025, 3, 26, 12, 0))  # Wed before DST start (2025-03-30)
+        end_before = timezone.make_aware(datetime(2025, 4, 20, 0, 0))
+        periods = waakdienst_periods(march_ref, end_before, team=self.team)
+        for p in periods:
+            self.assertIn(p.start.hour, (17,))
+            self.assertIn(p.end.hour, (8,))
+
+
+class HolidayPolicyTestCase(TestCase, BaseTestCase):
+    def setUp(self):
+        BaseTestCase.setUp(self)
+        # Use 1 week horizon like BaseTestCase
+        self.end_date = self.end_date  # already set by BaseTestCase
+        # Ensure team skips holidays
+        self.team.incidents_skip_holidays = True
+        self.team.save()
+
+    def test_incidents_skip_holiday_day(self):
+        # Create a holiday on Wednesday within the week
+        from team_planner.leaves.models import Holiday
+        week_monday = self.start_date.date()
+        wednesday = week_monday + timedelta(days=2)
+        Holiday.objects.create(name="Test Holiday", date=wednesday, is_recurring=False)
+
+        orchestrator = ShiftOrchestrator(
+            self.start_date,
+            self.end_date,
+            team_id=self.team.pk,
+            schedule_incidents=True,
+            schedule_incidents_standby=False,
+            schedule_waakdienst=False,
+        )
+        result = orchestrator.preview_schedule()
+        # Expect 4 incident daily shifts (Mon/Tue/Thu/Fri), not 5
+        self.assertEqual(result['incidents_shifts'], 4)
+        self.assertEqual(result['total_shifts'], 4)
+
+    def test_waakdienst_not_affected_by_holiday(self):
+        # Create a holiday; waakdienst should still generate full set of daily shifts (7 per waakdienst period)
+        from team_planner.leaves.models import Holiday
+        from team_planner.orchestrators.anchors import next_weekday_time, get_team_tz
+        Holiday.objects.create(name="Holiday", date=self.start_date.date() + timedelta(days=1), is_recurring=False)
+
+        tz = get_team_tz(self.team)
+        weekday = int(getattr(self.team, 'waakdienst_handover_weekday', 2))
+        start_hour = int(getattr(self.team, 'waakdienst_start_hour', 17))
+        end_hour = int(getattr(self.team, 'waakdienst_end_hour', 8))
+        first_start = next_weekday_time(self.start_date, weekday, start_hour, tz=tz, strictly_after=True)
+        first_end = (first_start + timedelta(days=7)).replace(hour=end_hour, minute=0, second=0, microsecond=0)
+
+        orchestrator = ShiftOrchestrator(
+            self.start_date,
+            first_end,  # ensure complete waakdienst period included
+            team_id=self.team.pk,
+            schedule_incidents=False,
+            schedule_incidents_standby=False,
+            schedule_waakdienst=True,
+        )
+        result = orchestrator.preview_schedule()
+        self.assertGreaterEqual(result['waakdienst_shifts'], 7)
+
+
+class WaakdienstAnchorConfigTestCase(TestCase):
+    def setUp(self):
+        self.department = Department.objects.create(name="Ops")
+        self.team = Team.objects.create(
+            name="NOC",
+            department=self.department,
+            waakdienst_handover_weekday=1,  # Tuesday
+            waakdienst_start_hour=18,
+            waakdienst_end_hour=9,
+        )
+        # Choose dates that will encompass at least one full period
+        self.start_date = timezone.make_aware(datetime(2025, 1, 1, 12, 0))
+        self.end_date = timezone.make_aware(datetime(2025, 1, 20, 0, 0))
+
+    def test_orchestrator_respects_team_anchors(self):
+        orch = ShiftOrchestrator(
+            self.start_date,
+            self.end_date,
+            team_id=self.team.pk,
+            schedule_incidents=False,
+            schedule_incidents_standby=False,
+            schedule_waakdienst=True,
+        )
+        weeks = orch.generate_waakdienst_weeks()
+        self.assertTrue(len(weeks) > 0)
+        start, end, kind = weeks[0]
+        # Start on Tuesday 18:00, end on next Tuesday 09:00
+        self.assertEqual(start.weekday(), 1)
+        self.assertEqual(start.hour, 18)
+        self.assertEqual(end.weekday(), 1)
+        self.assertEqual(end.hour, 9)
