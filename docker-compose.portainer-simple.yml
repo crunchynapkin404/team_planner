@@ -1,0 +1,98 @@
+version: '3.8'
+
+volumes:
+  team_planner_postgres_data:
+  team_planner_redis_data:
+
+networks:
+  team_planner_network:
+    driver: bridge
+
+services:
+  # Use pre-built Django image or build separately
+  django:
+    image: python:3.12-slim
+    container_name: team_planner_django
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./:/app
+    working_dir: /app
+    environment:
+      - USE_DOCKER=true
+      - DEBUG=true
+      - DATABASE_URL=postgres://teamplanner:securepassword123@postgres:5432/team_planner
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_FLOWER_USER=admin
+      - CELERY_FLOWER_PASSWORD=admin123
+      - EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
+    ports:
+      - '8000:8000'
+    networks:
+      - team_planner_network
+    restart: unless-stopped
+    command: >
+      bash -c "
+        pip install -r requirements/local.txt &&
+        python manage.py migrate &&
+        python manage.py runserver 0.0.0.0:8000
+      "
+
+  # Use Node.js for frontend
+  frontend:
+    image: node:20-alpine
+    container_name: team_planner_frontend
+    depends_on:
+      - django
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    working_dir: /app
+    ports:
+      - '3000:3000'
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+      - NODE_ENV=development
+    networks:
+      - team_planner_network
+    restart: unless-stopped
+    command: >
+      sh -c "
+        cp vite.config.docker.ts vite.config.ts &&
+        npm install &&
+        npm run dev -- --host 0.0.0.0
+      "
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: team_planner_postgres
+    volumes:
+      - team_planner_postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=team_planner
+      - POSTGRES_USER=teamplanner
+      - POSTGRES_PASSWORD=securepassword123
+    networks:
+      - team_planner_network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: team_planner_redis
+    volumes:
+      - team_planner_redis_data:/data
+    networks:
+      - team_planner_network
+    restart: unless-stopped
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: team_planner_mailpit
+    ports:
+      - "8025:8025"
+    networks:
+      - team_planner_network
+    restart: unless-stopped
