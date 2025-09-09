@@ -74,9 +74,9 @@ cd team_planner
 
 ### Services Available
 - **Frontend**: `http://your-server-ip:3000`
-- **Backend API**: `http://your-server-ip:8000`
-- **Admin Panel**: `http://your-server-ip:8000/admin/`
-- **API Documentation**: `http://your-server-ip:8000/api/docs/`
+- **Backend API**: `http://your-server-ip:8001`
+- **Admin Panel**: `http://your-server-ip:8001/admin/`
+- **API Documentation**: `http://your-server-ip:8001/api/docs/`
 - **Email Testing**: `http://your-server-ip:8025`
 - **Celery Monitoring**: `http://your-server-ip:5555`
 

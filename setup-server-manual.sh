@@ -124,7 +124,7 @@ services:
       - DATABASE_URL=postgres://teamplanner:securepassword123@postgres:5432/team_planner
       - REDIS_URL=redis://redis:6379/0
     ports:
-      - '8000:8000'
+      - '8001:8000'
     command: >
       bash -c "
         echo 'Installing dependencies...' &&
@@ -191,7 +191,7 @@ echo -e "${YELLOW}2. Use Web Editor and paste the contents of docker-compose-sim
 echo -e "${YELLOW}3. Deploy the stack${NC}"
 echo
 echo -e "${GREEN}After deployment:${NC}"
-echo -e "${BLUE}• Test API: http://$(hostname -I | awk '{print $1}'):8000${NC}"
+echo -e "${BLUE}• Test API: http://$(hostname -I | awk '{print $1}'):8001${NC}"
 echo -e "${BLUE}• Email: http://$(hostname -I | awk '{print $1}'):8025${NC}"
 echo
 echo -e "${YELLOW}📁 Project location: $DEPLOY_DIR${NC}"

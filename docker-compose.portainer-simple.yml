@@ -28,7 +28,7 @@ services:
       - CELERY_FLOWER_PASSWORD=admin123
       - EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
     ports:
-      - '8000:8000'
+      - '8001:8000'
     networks:
       - team_planner_network
     restart: unless-stopped

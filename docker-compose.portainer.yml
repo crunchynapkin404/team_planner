@@ -36,7 +36,7 @@ services:
       # Email
       - EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
     ports:
-      - '8000:8000'
+      - '8001:8000'
     command: /start
     networks:
       - team_planner_network

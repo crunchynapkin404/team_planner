@@ -17,9 +17,9 @@ chmod +x start-fullstack-docker.sh
 
 ### 2. Access Your Application
 - **Frontend**: http://your-server-ip:3000
-- **Backend**: http://your-server-ip:8000
-- **Admin**: http://your-server-ip:8000/admin/
-- **API Docs**: http://your-server-ip:8000/api/docs/
+- **🔧 Backend API**: `http://your-server-ip:8001` 
+- **👤 Admin Panel**: `http://your-server-ip:8001/admin/`
+- **📚 API Docs**: `http://your-server-ip:8001/api/docs/`
 - **Email**: http://your-server-ip:8025
 - **Celery**: http://your-server-ip:5555
 
