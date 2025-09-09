@@ -94,38 +94,22 @@ services:
           echo '✅ Frontend files copied!'
         fi &&
         echo '⚙️  Configuring Vite for Docker...' &&
-        cat > vite.config.ts << 'EOF'
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-
-export default defineConfig({
-  plugins: [react()],
-  server: {
-    host: '0.0.0.0',
-    port: 3000,
-    watch: {
-      usePolling: true,
-    },
-    proxy: {
-      '/api': {
-        target: 'http://django:8000',
-        changeOrigin: true,
-        secure: false,
-      },
-      '/shifts/api': {
-        target: 'http://django:8000',
-        changeOrigin: true,
-        secure: false,
-      },
-      '/orchestrators/api': {
-        target: 'http://django:8000',
-        changeOrigin: true,
-        secure: false,
-      },
-    },
-  },
-})
-EOF &&
+        echo 'import { defineConfig } from \"vite\"' > vite.config.ts &&
+        echo 'import react from \"@vitejs/plugin-react\"' >> vite.config.ts &&
+        echo '' >> vite.config.ts &&
+        echo 'export default defineConfig({' >> vite.config.ts &&
+        echo '  plugins: [react()],' >> vite.config.ts &&
+        echo '  server: {' >> vite.config.ts &&
+        echo '    host: \"0.0.0.0\",' >> vite.config.ts &&
+        echo '    port: 3000,' >> vite.config.ts &&
+        echo '    watch: { usePolling: true },' >> vite.config.ts &&
+        echo '    proxy: {' >> vite.config.ts &&
+        echo '      \"/api\": { target: \"http://django:8000\", changeOrigin: true, secure: false },' >> vite.config.ts &&
+        echo '      \"/shifts/api\": { target: \"http://django:8000\", changeOrigin: true, secure: false },' >> vite.config.ts &&
+        echo '      \"/orchestrators/api\": { target: \"http://django:8000\", changeOrigin: true, secure: false }' >> vite.config.ts &&
+        echo '    }' >> vite.config.ts &&
+        echo '  }' >> vite.config.ts &&
+        echo '})' >> vite.config.ts &&
         echo '📦 Installing npm dependencies...' &&
         npm install &&
         echo '🌐 Starting Vite development server...' &&
