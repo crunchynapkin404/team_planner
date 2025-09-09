@@ -196,4 +196,3 @@ echo -e "${BLUE}• Email: http://$(hostname -I | awk '{print $1}'):8025${NC}"
 echo
 echo -e "${YELLOW}📁 Project location: $DEPLOY_DIR${NC}"
 echo -e "${YELLOW}📁 Docker Compose file: $DEPLOY_DIR/docker-compose-simple.yml${NC}"
-EOF
