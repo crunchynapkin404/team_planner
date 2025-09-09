@@ -3,6 +3,8 @@ version: '3.8'
 volumes:
   team_planner_postgres_data:
   team_planner_redis_data:
+  app_code:
+  frontend_code:
 
 networks:
   team_planner_network:
@@ -156,7 +158,3 @@ services:
     networks:
       - team_planner_network
     restart: unless-stopped
-
-volumes:
-  app_code:
-  frontend_code:
