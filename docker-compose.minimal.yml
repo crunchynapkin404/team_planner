@@ -9,7 +9,7 @@ networks:
     driver: bridge
 
 services:
-  # Use pre-built Django image or build separately
+  # Simple Django setup with inline configuration
   django:
     image: python:3.12-slim
     container_name: team_planner_django
@@ -27,6 +27,7 @@ services:
       - CELERY_FLOWER_USER=admin
       - CELERY_FLOWER_PASSWORD=admin123
       - EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
+      - DJANGO_SETTINGS_MODULE=config.settings.local
     ports:
       - '8001:8000'
     networks:
@@ -34,23 +35,29 @@ services:
     restart: unless-stopped
     command: >
       bash -c "
-        echo 'Installing Python dependencies...' &&
+        echo 'Setting up Team Planner Django application...' &&
         pip install --upgrade pip &&
         pip install django==5.1.11 djangorestframework==3.16.0 psycopg==3.2.9 redis==6.3.0 celery==5.5.3 django-environ==0.12.0 django-cors-headers==4.7.0 python-slugify==8.0.4 argon2-cffi==25.1.0 whitenoise==6.9.0 django-allauth==65.10.0 django-crispy-forms==2.4 crispy-bootstrap5==2025.6 django-redis==6.0.0 drf-spectacular==0.28.0 icalendar==5.0.12 &&
         echo 'Dependencies installed successfully!' &&
+        if [ ! -f 'manage.py' ]; then
+          echo 'Creating Django project structure...' &&
+          django-admin startproject temp_project . &&
+          rm -rf temp_project &&
+          echo 'Basic project structure created!'
+        fi &&
+        echo 'Starting Django development server...' &&
         python manage.py migrate &&
         python manage.py runserver 0.0.0.0:8000
       "
 
-  # Use Node.js for frontend
+  # React frontend with Git clone
   frontend:
     image: node:20-alpine
     container_name: team_planner_frontend
     depends_on:
       - django
     volumes:
-      - ./frontend:/app
-      - /app/node_modules
+      - frontend_code:/app
     working_dir: /app
     ports:
       - '3000:3000'
@@ -62,8 +69,20 @@ services:
     restart: unless-stopped
     command: >
       sh -c "
-        cp vite.config.docker.ts vite.config.ts &&
+        if [ ! -f 'package.json' ]; then
+          echo 'Cloning frontend code...' &&
+          apk add --no-cache git &&
+          git clone https://github.com/crunchynapkin404/team_planner.git /tmp/repo &&
+          cp -r /tmp/repo/frontend/* . &&
+          rm -rf /tmp/repo &&
+          echo 'Frontend code cloned successfully!'
+        fi &&
+        if [ -f 'vite.config.docker.ts' ]; then
+          cp vite.config.docker.ts vite.config.ts
+        fi &&
+        echo 'Installing npm dependencies...' &&
         npm install &&
+        echo 'Starting Vite development server...' &&
         npm run dev -- --host 0.0.0.0
       "
 
@@ -99,3 +118,6 @@ services:
     networks:
       - team_planner_network
     restart: unless-stopped
+
+volumes:
+  frontend_code:

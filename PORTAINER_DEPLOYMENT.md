@@ -1,4 +1,8 @@
-# 🐳 Portainer Deployment Guide for Team Planner
+# 🐳 Portainer Deplo1. Select **Repository** tab
+2. Fill in the following:
+   - **Repository URL**: `https://github.com/crunchynapkin404/team_planner.git`
+   - **Repository reference**: `main`
+   - **Compose path**: `docker-compose.git-clone.yml` Guide for Team Planner
 
 ## Prerequisites
 - Portainer running on your server

@@ -9,7 +9,7 @@ networks:
     driver: bridge
 
 services:
-  # Use pre-built Django image or build separately
+  # Django with full repository clone
   django:
     image: python:3.12-slim
     container_name: team_planner_django
@@ -17,7 +17,7 @@ services:
       - postgres
       - redis
     volumes:
-      - ./:/app
+      - app_code:/app
     working_dir: /app
     environment:
       - USE_DOCKER=true
@@ -27,6 +27,7 @@ services:
       - CELERY_FLOWER_USER=admin
       - CELERY_FLOWER_PASSWORD=admin123
       - EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
+      - DJANGO_SETTINGS_MODULE=config.settings.local
     ports:
       - '8001:8000'
     networks:
@@ -34,23 +35,32 @@ services:
     restart: unless-stopped
     command: >
       bash -c "
+        echo 'Setting up Team Planner application...' &&
+        if [ ! -f 'manage.py' ]; then
+          echo 'Installing git and cloning repository...' &&
+          apt-get update && apt-get install -y git &&
+          git clone https://github.com/crunchynapkin404/team_planner.git /tmp/repo &&
+          cp -r /tmp/repo/* . &&
+          rm -rf /tmp/repo &&
+          echo 'Repository cloned successfully!'
+        fi &&
         echo 'Installing Python dependencies...' &&
         pip install --upgrade pip &&
-        pip install django==5.1.11 djangorestframework==3.16.0 psycopg==3.2.9 redis==6.3.0 celery==5.5.3 django-environ==0.12.0 django-cors-headers==4.7.0 python-slugify==8.0.4 argon2-cffi==25.1.0 whitenoise==6.9.0 django-allauth==65.10.0 django-crispy-forms==2.4 crispy-bootstrap5==2025.6 django-redis==6.0.0 drf-spectacular==0.28.0 icalendar==5.0.12 &&
-        echo 'Dependencies installed successfully!' &&
+        pip install -r requirements/local.txt &&
+        echo 'Running database migrations...' &&
         python manage.py migrate &&
+        echo 'Starting Django development server...' &&
         python manage.py runserver 0.0.0.0:8000
       "
 
-  # Use Node.js for frontend
+  # React frontend  
   frontend:
     image: node:20-alpine
     container_name: team_planner_frontend
     depends_on:
       - django
     volumes:
-      - ./frontend:/app
-      - /app/node_modules
+      - frontend_code:/app
     working_dir: /app
     ports:
       - '3000:3000'
@@ -62,8 +72,22 @@ services:
     restart: unless-stopped
     command: >
       sh -c "
-        cp vite.config.docker.ts vite.config.ts &&
+        echo 'Setting up frontend...' &&
+        if [ ! -f 'package.json' ]; then
+          echo 'Installing git and cloning repository...' &&
+          apk add --no-cache git &&
+          git clone https://github.com/crunchynapkin404/team_planner.git /tmp/repo &&
+          cp -r /tmp/repo/frontend/* . &&
+          rm -rf /tmp/repo &&
+          echo 'Frontend code setup complete!'
+        fi &&
+        if [ -f 'vite.config.docker.ts' ]; then
+          echo 'Using Docker-specific Vite configuration...' &&
+          cp vite.config.docker.ts vite.config.ts
+        fi &&
+        echo 'Installing npm dependencies...' &&
         npm install &&
+        echo 'Starting Vite development server...' &&
         npm run dev -- --host 0.0.0.0
       "
 
@@ -73,8 +97,6 @@ services:
     volumes:
       - team_planner_postgres_data:/var/lib/postgresql/data
     environment:
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
       - POSTGRES_DB=team_planner
       - POSTGRES_USER=teamplanner
       - POSTGRES_PASSWORD=securepassword123
@@ -99,3 +121,7 @@ services:
     networks:
       - team_planner_network
     restart: unless-stopped
+
+volumes:
+  app_code:
+  frontend_code:
