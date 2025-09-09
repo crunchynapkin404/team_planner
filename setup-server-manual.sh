@@ -31,7 +31,7 @@ mkdir -p frontend compose/local/django .envs/.local
 
 # Download docker-compose file
 echo -e "${YELLOW}Downloading docker-compose configuration...${NC}"
-curl -sSL https://raw.githubusercontent.com/crunchynapkin404/team_planner/main/docker-compose.git-clone.yml -o docker-compose.yml
+curl -sSL https://raw.githubusercontent.com/crunchynapkin404/team_planner/main/docker-compose.portainer-final.yml -o docker-compose.yml
 
 # Create basic Django requirements (we'll build from base image)
 echo -e "${YELLOW}Creating requirements file...${NC}"
