@@ -24,7 +24,7 @@ This project includes several Docker deployment options:
 
 ## 📋 Port Configuration
 - **Frontend**: `3000`
-- **Django Backend**: `8001` (changed from 8000 to avoid conflicts)
+- **Django Backend**: `8000` (standardized port)
 - **PostgreSQL**: `5432` (internal)
 - **Redis**: `6379` (internal)
 - **Email (Mailpit)**: `8025`

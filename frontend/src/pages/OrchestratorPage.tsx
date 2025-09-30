@@ -71,9 +71,12 @@ const OrchestratorPage: React.FC<OrchestratorPageProps> = () => {
     const loadTeams = async () => {
       try {
         const teamData = await apiClient.get(API_CONFIG.ENDPOINTS.TEAMS_LIST) as any;
-        setTeams(teamData);
+        // Handle both direct array and paginated response formats
+        const teamsArray = Array.isArray(teamData) ? teamData : (teamData?.results || []);
+        setTeams(teamsArray);
       } catch (err) {
         console.error('Failed to load teams:', err);
+        setTeams([]); // Ensure teams is always an array
       }
     };
     loadTeams();
@@ -222,14 +225,14 @@ const OrchestratorPage: React.FC<OrchestratorPageProps> = () => {
                 onChange={(e) => setSelectedTeam(e.target.value as number)}
                 label="Team"
               >
-                {teams.map((t) => (
+                {Array.isArray(teams) && teams.map((t) => (
                   <MenuItem key={t.id} value={t.id}>
                     {t.name}
                   </MenuItem>
                 ))}
               </Select>
             </FormControl>
-            {autoOverview && selectedTeam && (
+            {autoOverview && selectedTeam && Array.isArray(autoOverview.teams) && (
               <Box sx={{ mt: 1 }}>
                 <Alert severity={autoOverview.teams.find((t:any)=>t.id===selectedTeam)?.seed_ready ? 'success' : 'warning'}>
                   {autoOverview.teams.find((t:any)=>t.id===selectedTeam)?.seed_ready ? 'Initial 6-month plan detected' : 'Needs initial 6-month plan to enable rolling'}

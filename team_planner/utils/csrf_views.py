@@ -8,4 +8,4 @@ from django.views.decorators.http import require_http_methods
 @require_http_methods(["GET"])
 def csrf_token_view(request):
     """Return CSRF token for the client."""
-    return JsonResponse({'csrfToken': get_token(request)})
+    return JsonResponse({"csrfToken": get_token(request)})

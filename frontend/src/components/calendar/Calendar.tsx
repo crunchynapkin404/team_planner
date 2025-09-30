@@ -30,7 +30,6 @@ import {
   ListItemIcon,
   Badge,
   TextField,
-  IconButton,
 } from '@mui/material';
 import { DateSelectArg, EventDropArg, EventClickArg } from '@fullcalendar/core';
 import { 
@@ -41,7 +40,6 @@ import {
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
   Today as TodayIcon,
-  DateRange as DateRangeIcon
 } from '@mui/icons-material';
 
 interface CalendarEvent {
@@ -53,10 +51,22 @@ interface CalendarEvent {
   backgroundColor?: string;
   borderColor?: string;
   extendedProps?: {
-    shiftType: 'incident' | 'incidents' | 'incidents_standby' | 'waakdienst' | 'project' | 'change';
+    shiftType?: 'incident' | 'incidents' | 'incidents_standby' | 'waakdienst' | 'project' | 'change';
+    leaveType?: 'vacation' | 'sick' | 'personal' | 'other';
     engineerName: string;
     engineerId: string;
-    status: 'confirmed' | 'pending' | 'swap_requested';
+    status?: 'confirmed' | 'pending' | 'swap_requested' | 'approved' | 'rejected' | 'cancelled';
+    teamId?: string;
+    teamName?: string;
+    eventType?: 'shift' | 'leave';
+    reason?: string;
+    days_requested?: number;
+    leave_type_name?: string;
+    leave_type_color?: string;
+    isRecurring?: boolean;
+    recurringPatternId?: number;
+    coverage_type?: string;
+    description?: string;
   };
 }
 

@@ -10,273 +10,188 @@ describe('ScheduleOrchestratorForm', () => {
   });
 
   describe('Form Rendering', () => {
-    it('renders all form sections correctly', () => {
+    it('renders all main sections correctly', async () => {
       renderWithProviders(<ScheduleOrchestratorForm />);
 
       // Check for form title
-      expect(screen.getByRole('heading', { name: /schedule orchestration/i })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /shift orchestrator/i })).toBeInTheDocument();
 
       // Check for section headings
-      expect(screen.getByRole('heading', { name: /quick actions/i })).toBeInTheDocument();
-      expect(screen.getByRole('heading', { name: /custom date range/i })).toBeInTheDocument();
-      expect(screen.getByRole('heading', { name: /options/i })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /configuration/i })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /generate initial 6-month schedule/i })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /enable automatic weekly rolling/i })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /current status/i })).toBeInTheDocument();
 
-      // Check for form fields
-      expect(screen.getByLabelText(/start date/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/end date/i)).toBeInTheDocument();
+      // Check for main action buttons
+      expect(screen.getByRole('button', { name: /preview 6-month schedule/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /enable auto-scheduling/i })).toBeInTheDocument();
+    });
+
+    it('shows team selector with default selection', async () => {
+      renderWithProviders(<ScheduleOrchestratorForm />);
+      
+      // Check for team selector and the team text content
       expect(screen.getByRole('combobox')).toBeInTheDocument();
-      
-      // Check for quick action buttons
-      expect(screen.getByRole('button', { name: /schedule current week/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /schedule next week/i })).toBeInTheDocument();
-      
-      // Check for main action button
-      expect(screen.getByRole('button', { name: /run orchestration/i })).toBeInTheDocument();
+      expect(screen.getByText('Team Alpha')).toBeInTheDocument();
     });
 
-    it('displays date inputs with proper format', () => {
+    it('shows shift type checkboxes', async () => {
       renderWithProviders(<ScheduleOrchestratorForm />);
 
-      const startDateInput = screen.getByLabelText(/start date/i);
-      const endDateInput = screen.getByLabelText(/end date/i);
-
-      expect(startDateInput).toHaveAttribute('type', 'date');
-      expect(endDateInput).toHaveAttribute('type', 'date');
+      // Check for shift type checkboxes
+      expect(screen.getByLabelText(/incidents \(mon-fri 8:00-17:00\)/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/waakdienst \(wed-wed on-call\)/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/incidents-standby \(backup\)/i)).toBeInTheDocument();
     });
 
-    it('shows options section with checkboxes', () => {
+    it('shows preview mode checkbox', async () => {
       renderWithProviders(<ScheduleOrchestratorForm />);
 
-      // Check for option checkboxes
-      expect(screen.getByLabelText(/dry run \(preview only\)/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/force \(override existing assignments\)/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/preview mode \(dry run - no actual shifts created\)/i)).toBeInTheDocument();
     });
 
-    it('disables run orchestration button when dates are empty', () => {
+    it('enables generate button when shift types are selected by default', async () => {
       renderWithProviders(<ScheduleOrchestratorForm />);
 
-      const runButton = screen.getByRole('button', { name: /run orchestration/i });
-      expect(runButton).toBeDisabled();
-    });
-  });
-
-  describe('Form Validation', () => {
-    it('validates that end date is after start date', async () => {
-      const user = userEvent.setup();
-      renderWithProviders(<ScheduleOrchestratorForm />);
-
-      const startDateInput = screen.getByLabelText(/start date/i);
-      const endDateInput = screen.getByLabelText(/end date/i);
-
-      // Set end date before start date
-      await user.type(startDateInput, '2024-01-15');
-      await user.type(endDateInput, '2024-01-10');
-
-      const submitButton = screen.getByRole('button', { name: /run orchestration/i });
-      expect(submitButton).toBeEnabled(); // Button should be enabled now that dates are filled
-      
-      await user.click(submitButton);
-
-      await waitFor(() => {
-        expect(screen.getByText(/end date must be after start date/i)).toBeInTheDocument();
-      });
-    });
-
-    it('requires start and end dates to be filled', async () => {
-      const user = userEvent.setup();
-      renderWithProviders(<ScheduleOrchestratorForm />);
-
-      const submitButton = screen.getByRole('button', { name: /run orchestration/i });
-      
-      // Button should be disabled when dates are empty
-      expect(submitButton).toBeDisabled();
-      
-      // Fill only start date
-      const startDateInput = screen.getByLabelText(/start date/i);
-      await user.type(startDateInput, '2024-01-15');
-      expect(submitButton).toBeDisabled();
-      
-      // Fill end date too
-      const endDateInput = screen.getByLabelText(/end date/i);
-      await user.type(endDateInput, '2024-01-20');
-      expect(submitButton).toBeEnabled();
-    });
-
-    it('validates date range duration', async () => {
-      const user = userEvent.setup();
-      renderWithProviders(<ScheduleOrchestratorForm />);
-
-      const startDateInput = screen.getByLabelText(/start date/i);
-      const endDateInput = screen.getByLabelText(/end date/i);
-
-      // Set date range longer than 30 days
-      await user.type(startDateInput, '2024-01-01');
-      await user.type(endDateInput, '2024-03-01');
-
-      const submitButton = screen.getByRole('button', { name: /run orchestration/i });
-      await user.click(submitButton);
-
-      await waitFor(() => {
-        expect(screen.getByText(/date range cannot exceed 30 days/i)).toBeInTheDocument();
-      });
+      // Default state should have incidents and waakdienst selected, so button should be enabled
+      const generateButton = screen.getByRole('button', { name: /preview 6-month schedule/i });
+      expect(generateButton).toBeEnabled();
     });
   });
 
   describe('Form Interactions', () => {
-    it('updates form fields when values are changed', async () => {
+    it('disables generate button when no shift types are selected', async () => {
       const user = userEvent.setup();
       renderWithProviders(<ScheduleOrchestratorForm />);
 
-      // Fill form
-      const startDateInput = screen.getByLabelText(/start date/i);
-      const endDateInput = screen.getByLabelText(/end date/i);
-      const dryRunCheckbox = screen.getByLabelText(/dry run \(preview only\)/i);
+      const generateButton = screen.getByRole('button', { name: /preview 6-month schedule/i });
+      
+      // Initially enabled with default selections
+      expect(generateButton).toBeEnabled();
 
-      await user.type(startDateInput, '2024-01-15');
-      await user.type(endDateInput, '2024-01-20');
-      await user.click(dryRunCheckbox);
+      // Uncheck all shift types
+      const incidentsCheckbox = screen.getByRole('checkbox', { name: /incidents \(mon-fri 8:00-17:00\)/i });
+      const waakdienstCheckbox = screen.getByRole('checkbox', { name: /waakdienst \(wed-wed on-call\)/i });
+      
+      await user.click(incidentsCheckbox);
+      await user.click(waakdienstCheckbox);
 
-      expect(startDateInput).toHaveValue('2024-01-15');
-      expect(endDateInput).toHaveValue('2024-01-20');
-      expect(dryRunCheckbox).toBeChecked();
+      // Now button should be disabled
+      expect(generateButton).toBeDisabled();
     });
 
-    it('updates options when checkboxes are toggled', async () => {
+    it('toggles shift type checkboxes correctly', async () => {
       const user = userEvent.setup();
       renderWithProviders(<ScheduleOrchestratorForm />);
 
-      const dryRunCheckbox = screen.getByLabelText(/dry run \(preview only\)/i);
-      const forceCheckbox = screen.getByLabelText(/force \(override existing assignments\)/i);
+      const incidentsCheckbox = screen.getByRole('checkbox', { name: /incidents \(mon-fri 8:00-17:00\)/i });
+      const waakdienstCheckbox = screen.getByRole('checkbox', { name: /waakdienst \(wed-wed on-call\)/i });
+      const standbyCheckbox = screen.getByRole('checkbox', { name: /incidents-standby \(backup\)/i });
 
-      // Initially unchecked
-      expect(dryRunCheckbox).not.toBeChecked();
-      expect(forceCheckbox).not.toBeChecked();
+      // Initially incidents and waakdienst should be checked, standby unchecked
+      expect(incidentsCheckbox).toBeChecked();
+      expect(waakdienstCheckbox).toBeChecked();
+      expect(standbyCheckbox).not.toBeChecked();
 
-      // Toggle options
-      await user.click(dryRunCheckbox);
-      await user.click(forceCheckbox);
+      // Toggle checkboxes
+      await user.click(incidentsCheckbox);
+      await user.click(standbyCheckbox);
 
-      expect(dryRunCheckbox).toBeChecked();
-      expect(forceCheckbox).toBeChecked();
-
-      // Toggle off
-      await user.click(dryRunCheckbox);
-      expect(dryRunCheckbox).not.toBeChecked();
-      expect(forceCheckbox).toBeChecked();
+      expect(incidentsCheckbox).not.toBeChecked();
+      expect(waakdienstCheckbox).toBeChecked();
+      expect(standbyCheckbox).toBeChecked();
     });
 
-    it('handles department selection', async () => {
+    it('toggles preview mode correctly', async () => {
       const user = userEvent.setup();
       renderWithProviders(<ScheduleOrchestratorForm />);
 
-      const departmentSelect = screen.getByRole('combobox');
+      const previewCheckbox = screen.getByRole('checkbox', { name: /preview mode \(dry run - no actual shifts created\)/i });
       
-      // Click to open dropdown
-      await user.click(departmentSelect);
-      
-      // Wait for dropdown options to appear and select one
+      // Initially checked (dry run is default)
+      expect(previewCheckbox).toBeChecked();
+
+      // Toggle preview mode off
+      await user.click(previewCheckbox);
+      expect(previewCheckbox).not.toBeChecked();
+
+      // Button text should change
       await waitFor(() => {
-        const option = screen.getByText('Department 1');
-        expect(option).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /generate 6-month schedule/i })).toBeInTheDocument();
       });
-      
-      await user.click(screen.getByText('Department 1'));
-      
-      // The select should now show the selected value (this might be implementation dependent)
-      expect(departmentSelect).toBeInTheDocument();
-    });
-  });
 
-  describe('Quick Actions', () => {
-    it('renders quick action buttons', () => {
-      renderWithProviders(<ScheduleOrchestratorForm />);
+      // Toggle back on
+      await user.click(previewCheckbox);
+      expect(previewCheckbox).toBeChecked();
 
-      const currentWeekButton = screen.getByRole('button', { name: /schedule current week/i });
-      const nextWeekButton = screen.getByRole('button', { name: /schedule next week/i });
-
-      expect(currentWeekButton).toBeInTheDocument();
-      expect(nextWeekButton).toBeInTheDocument();
-    });
-
-    it('quick action buttons are enabled by default', () => {
-      renderWithProviders(<ScheduleOrchestratorForm />);
-
-      const currentWeekButton = screen.getByRole('button', { name: /schedule current week/i });
-      const nextWeekButton = screen.getByRole('button', { name: /schedule next week/i });
-
-      expect(currentWeekButton).toBeEnabled();
-      expect(nextWeekButton).toBeEnabled();
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /preview 6-month schedule/i })).toBeInTheDocument();
+      });
     });
   });
 
   describe('Form Submission', () => {
-    it('enables run orchestration button with valid data', async () => {
-      const user = userEvent.setup();
+    it('has generate and auto-scheduling buttons available', async () => {
       renderWithProviders(<ScheduleOrchestratorForm />);
 
-      // Fill valid form data
-      const startDateInput = screen.getByLabelText(/start date/i);
-      const endDateInput = screen.getByLabelText(/end date/i);
+      const generateButton = screen.getByRole('button', { name: /preview 6-month schedule/i });
+      const autoButton = screen.getByRole('button', { name: /enable auto-scheduling/i });
 
-      await user.type(startDateInput, '2024-01-15');
-      await user.type(endDateInput, '2024-01-20');
-
-      const submitButton = screen.getByRole('button', { name: /run orchestration/i });
-      expect(submitButton).toBeEnabled();
+      // Both buttons should be present and enabled
+      expect(generateButton).toBeEnabled();
+      expect(autoButton).toBeEnabled();
     });
 
-    it('shows running state during submission', async () => {
+    it('shows correct button text based on preview mode', async () => {
       const user = userEvent.setup();
       renderWithProviders(<ScheduleOrchestratorForm />);
 
-      // Fill minimal valid data
-      const startDateInput = screen.getByLabelText(/start date/i);
-      const endDateInput = screen.getByLabelText(/end date/i);
+      // Initially in preview mode
+      expect(screen.getByRole('button', { name: /preview 6-month schedule/i })).toBeInTheDocument();
 
-      await user.type(startDateInput, '2024-01-15');
-      await user.type(endDateInput, '2024-01-20');
+      // Toggle preview mode off
+      const previewCheckbox = screen.getByRole('checkbox', { name: /preview mode/i });
+      await user.click(previewCheckbox);
 
-      const submitButton = screen.getByRole('button', { name: /run orchestration/i });
-      await user.click(submitButton);
-
-      // Check if button shows running state (this might be brief)
-      // Note: This test might need adjustment based on actual async behavior
-      expect(submitButton).toBeInTheDocument();
+      // Button text should change
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /generate 6-month schedule/i })).toBeInTheDocument();
+      });
     });
   });
 
   describe('Accessibility', () => {
-    it('has proper ARIA labels and accessible elements', () => {
+    it('has proper ARIA labels and accessible elements', async () => {
       renderWithProviders(<ScheduleOrchestratorForm />);
 
-      // Check inputs have proper labels
-      expect(screen.getByLabelText(/start date/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/end date/i)).toBeInTheDocument();
+      // Check team selector has proper role
       expect(screen.getByRole('combobox')).toBeInTheDocument();
       
+      // Check checkboxes have proper labels
+      expect(screen.getByRole('checkbox', { name: /incidents \(mon-fri 8:00-17:00\)/i })).toBeInTheDocument();
+      expect(screen.getByRole('checkbox', { name: /waakdienst \(wed-wed on-call\)/i })).toBeInTheDocument();
+      expect(screen.getByRole('checkbox', { name: /incidents-standby \(backup\)/i })).toBeInTheDocument();
+      expect(screen.getByRole('checkbox', { name: /preview mode/i })).toBeInTheDocument();
+      
       // Check buttons have proper roles and accessible names
-      expect(screen.getByRole('button', { name: /schedule current week/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /schedule next week/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /run orchestration/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /preview 6-month schedule/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /enable auto-scheduling/i })).toBeInTheDocument();
     });
 
     it('supports keyboard navigation', async () => {
       const user = userEvent.setup();
       renderWithProviders(<ScheduleOrchestratorForm />);
 
-      // Start from beginning of form
-      const firstButton = screen.getByRole('button', { name: /schedule current week/i });
-      
-      // Tab to first focusable element (which is the first button)
+      // Tab to first focusable element (team selector)
       await user.tab();
-      expect(firstButton).toHaveFocus();
+      expect(screen.getByRole('combobox')).toHaveFocus();
 
-      // Continue tabbing through form elements
+      // Continue tabbing through checkboxes - be more specific to avoid multiple matches
       await user.tab();
-      expect(screen.getByRole('button', { name: /schedule next week/i })).toHaveFocus();
+      expect(screen.getByRole('checkbox', { name: /incidents \(mon-fri 8:00-17:00\)/i })).toHaveFocus();
 
       await user.tab();
-      expect(screen.getByLabelText(/start date/i)).toHaveFocus();
+      expect(screen.getByRole('checkbox', { name: /waakdienst \(wed-wed on-call\)/i })).toHaveFocus();
     });
   });
 });

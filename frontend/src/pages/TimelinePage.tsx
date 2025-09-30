@@ -21,7 +21,6 @@ import {
   Chip,
   Button,
   IconButton,
-  TextField,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -40,7 +39,7 @@ import {
 import { apiClient } from '../services/apiClient';
 import { API_CONFIG } from '../config/api';
 import { CalendarEvent } from '../types/calendar';
-import { formatDate, formatDateTime, formatTime } from '../utils/dateUtils';
+import { formatDate } from '../utils/dateUtils';
 
 interface TimelineData {
   engineer: string;
@@ -169,7 +168,7 @@ const TimelinePage: React.FC = () => {
         for (const pattern of patternsResponse.data) {
           console.log('🔄 Processing pattern:', pattern);
           // Find the user object for this pattern's employee ID
-          const patternOwner = allUsers.find(user => user.id === pattern.employee) || currentUser;
+          const patternOwner = allUsers.find((user: any) => user.id === pattern.employee) || currentUser;
           console.log('👤 Pattern owner:', patternOwner);
           const events = generateRecurringLeaveEvents(pattern, patternOwner);
           console.log(`📅 Generated ${events.length} events for pattern ${pattern.id}`);

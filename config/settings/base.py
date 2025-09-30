@@ -47,7 +47,7 @@ LOCALE_PATHS = [str(BASE_DIR / "locale")]
 
 # European date/time format settings
 DATE_FORMAT = "d/m/Y"  # DD/MM/YYYY
-TIME_FORMAT = "H:i"    # 24-hour format HH:MM
+TIME_FORMAT = "H:i"  # 24-hour format HH:MM
 DATETIME_FORMAT = "d/m/Y H:i"  # DD/MM/YYYY HH:MM
 SHORT_DATE_FORMAT = "d/m/Y"
 SHORT_DATETIME_FORMAT = "d/m/Y H:i"
@@ -97,7 +97,7 @@ THIRD_PARTY_APPS = [
 LOCAL_APPS = [
     "team_planner.users",
     "team_planner.teams",
-    "team_planner.employees", 
+    "team_planner.employees",
     "team_planner.leaves",
     "team_planner.shifts",
     "team_planner.orchestrators",
@@ -328,7 +328,7 @@ ACCOUNT_LOGIN_METHODS = {"username"}
 # https://docs.allauth.org/en/latest/account/configuration.html
 ACCOUNT_SIGNUP_FIELDS = ["email*", "username*", "password1*", "password2*"]
 # https://docs.allauth.org/en/latest/account/configuration.html
-ACCOUNT_EMAIL_VERIFICATION = "mandatory"
+ACCOUNT_EMAIL_VERIFICATION = "none"
 # https://docs.allauth.org/en/latest/account/configuration.html
 ACCOUNT_ADAPTER = "team_planner.users.adapters.AccountAdapter"
 # https://docs.allauth.org/en/latest/account/forms.html

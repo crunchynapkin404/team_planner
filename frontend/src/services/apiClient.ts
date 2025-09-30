@@ -1,6 +1,6 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { ApiError } from '../types';
-import { API_CONFIG, buildEndpointUrl } from '../config/api';
+import { API_CONFIG } from '../config/api';
 
 class ApiClient {
   private client: AxiosInstance;
@@ -9,7 +9,7 @@ class ApiClient {
     this.client = axios.create({
       baseURL: API_CONFIG.BASE_URL,
       timeout: 60000, // Increased to 60 seconds for orchestrator operations
-      withCredentials: true,
+      withCredentials: false, // Disable credentials to avoid CSRF issues with token auth
       headers: {
         'Content-Type': 'application/json',
       },

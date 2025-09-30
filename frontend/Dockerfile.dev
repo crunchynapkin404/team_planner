@@ -9,10 +9,16 @@ COPY package*.json ./
 # Install dependencies
 RUN npm install
 
-# Copy source code
-COPY . .
+# Copy source code (excluding vite.config.ts to avoid conflicts)
+COPY package*.json ./
+COPY src/ ./src/
+COPY public/ ./public/
+COPY index.html ./
+COPY tsconfig*.json ./
+COPY jest.config.json ./
+COPY vite.config.docker.ts ./
 
-# Use Docker-specific Vite config
+# Use Docker-specific Vite config as the main config
 RUN cp vite.config.docker.ts vite.config.ts
 
 # Expose port

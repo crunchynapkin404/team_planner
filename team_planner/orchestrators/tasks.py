@@ -1,18 +1,24 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
-from datetime import datetime, timedelta
-from typing import Iterable, Optional, Dict, Any, List
+from dataclasses import asdict
+from dataclasses import dataclass
+from datetime import datetime
+from datetime import timedelta
+from typing import TYPE_CHECKING
+from typing import Any
 
 from celery import shared_task
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
-from django.conf import settings
 
 from team_planner.orchestrators.unified import UnifiedOrchestrator
+from team_planner.shifts.models import Shift
 from team_planner.shifts.models import ShiftType
 from team_planner.teams.models import Team
-from team_planner.shifts.models import Shift
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 
 @dataclass
@@ -28,77 +34,87 @@ class TeamHorizonReport:
     incidents_standby: int
     waakdienst: int
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
-def _plan_for_team(team: Team, start_dt: datetime, end_dt: datetime, dry_run: bool, shift_types: Optional[List[str]] = None) -> TeamHorizonReport:
+def _plan_for_team(
+    team: Team,
+    start_dt: datetime,
+    end_dt: datetime,
+    dry_run: bool,
+    shift_types: list[str] | None = None,
+) -> TeamHorizonReport:
     # Determine which shift types to schedule
-    include_incidents = True if shift_types is None else ('incidents' in shift_types)
-    include_standby = (team.standby_mode == Team.StandbyMode.GLOBAL_PER_WEEK) if shift_types is None else ('incidents_standby' in shift_types)
-    include_waakdienst = True if shift_types is None else ('waakdienst' in shift_types)
+    include_incidents = True if shift_types is None else ("incidents" in shift_types)
+    include_standby = (
+        (team.standby_mode == Team.StandbyMode.GLOBAL_PER_WEEK)
+        if shift_types is None
+        else ("incidents_standby" in shift_types)
+    )
+    include_waakdienst = True if shift_types is None else ("waakdienst" in shift_types)
 
     # Track results across all orchestrators
     total_created = 0
     incidents_count = 0
     standby_count = 0
     waakdienst_count = 0
-    
+
     # Run each shift type independently using UnifiedOrchestrator
     if include_incidents:
         orch = UnifiedOrchestrator(
-            team=team, 
-            start_date=start_dt, 
-            end_date=end_dt, 
+            team=team,
+            start_date=start_dt,
+            end_date=end_dt,
             shift_types=[ShiftType.INCIDENTS],
-            dry_run=dry_run
+            dry_run=dry_run,
         )
-        
+
         if dry_run:
             result = orch.preview_schedule()
         else:
             with transaction.atomic():
                 result = orch.apply_schedule()
-                
-        incidents_count = result.get('total_shifts_created', 0)
+
+        incidents_count = result.get("total_shifts_created", 0)
         if not dry_run:
             total_created += incidents_count
-    
+
     if include_standby:
         orch = UnifiedOrchestrator(
-            team=team, 
-            start_date=start_dt, 
-            end_date=end_dt, 
+            team=team,
+            start_date=start_dt,
+            end_date=end_dt,
             shift_types=[ShiftType.INCIDENTS_STANDBY],
-            dry_run=dry_run
+            dry_run=dry_run,
         )
-        
+
         if dry_run:
             result = orch.preview_schedule()
         else:
             with transaction.atomic():
                 result = orch.apply_schedule()
-                
-        standby_count = result.get('total_shifts_created', 0)
+
+        standby_count = result.get("total_shifts_created", 0)
         if not dry_run:
             total_created += standby_count
-        
+
     if include_waakdienst:
         orch = UnifiedOrchestrator(
-            team=team, 
-            start_date=start_dt, 
-            end_date=end_dt, 
+            team=team,
+            start_date=start_dt,
+            end_date=end_dt,
             shift_types=[ShiftType.WAAKDIENST],
-            dry_run=dry_run
+            dry_run=dry_run,
         )
-        
+
         if dry_run:
             result = orch.preview_schedule()
         else:
             with transaction.atomic():
                 result = orch.apply_schedule()
-                
-        waakdienst_count = result.get('total_shifts_created', 0)
+
+        waakdienst_count = result.get("total_shifts_created", 0)
         if not dry_run:
             total_created += waakdienst_count
 
@@ -119,10 +135,10 @@ def _plan_for_team(team: Team, start_dt: datetime, end_dt: datetime, dry_run: bo
 def extend_rolling_horizon_core(
     months: int = 6,
     dry_run: bool = False,
-    team_ids: Optional[Iterable[int]] = None,
-    weeks: Optional[int] = None,
-    shift_types: Optional[List[str]] = None,
-) -> Dict[str, Any]:
+    team_ids: Iterable[int] | None = None,
+    weeks: int | None = None,
+    shift_types: list[str] | None = None,
+) -> dict[str, Any]:
     """Extend schedules up to now + N months or weeks using complete, anchor-aligned periods per team.
 
     - Only runs for teams that already have an initial manual plan reaching a configured horizon
@@ -153,7 +169,7 @@ def extend_rolling_horizon_core(
     min_seed_weeks = int(getattr(settings, "ORCHESTRATOR_MIN_SEED_WEEKS", 26))
     seed_target_dt = now + timedelta(weeks=max(1, min_seed_weeks))
 
-    reports: List[TeamHorizonReport] = []
+    reports: list[TeamHorizonReport] = []
     for team in qs:
         if require_seed:
             has_seed = Shift.objects.filter(
@@ -165,10 +181,12 @@ def extend_rolling_horizon_core(
                 continue
 
         start_dt = now
-        report = _plan_for_team(team, start_dt, end_dt, dry_run=dry_run, shift_types=shift_types)
+        report = _plan_for_team(
+            team, start_dt, end_dt, dry_run=dry_run, shift_types=shift_types,
+        )
         reports.append(report)
 
-    summary = {
+    return {
         "now": now,
         "end": end_dt,
         "dry_run": dry_run,
@@ -182,14 +200,25 @@ def extend_rolling_horizon_core(
             "waakdienst": sum(r.waakdienst for r in reports),
         },
     }
-    return summary
 
 
 @shared_task(name="orchestrators.extend_rolling_horizon")
-def extend_rolling_horizon_task(months: int = 6, dry_run: bool = False, team_ids: Optional[List[int]] = None, weeks: Optional[int] = None, shift_types: Optional[List[str]] = None) -> Dict[str, Any]:
+def extend_rolling_horizon_task(
+    months: int = 6,
+    dry_run: bool = False,
+    team_ids: list[int] | None = None,
+    weeks: int | None = None,
+    shift_types: list[str] | None = None,
+) -> dict[str, Any]:
     """Celery task wrapper for rolling horizon extension.
 
     Example dispatch:
       extend_rolling_horizon_task.delay(weeks=26, dry_run=False, shift_types=['incidents','waakdienst'])
     """
-    return extend_rolling_horizon_core(months=months, dry_run=dry_run, team_ids=team_ids, weeks=weeks, shift_types=shift_types)
+    return extend_rolling_horizon_core(
+        months=months,
+        dry_run=dry_run,
+        team_ids=team_ids,
+        weeks=weeks,
+        shift_types=shift_types,
+    )

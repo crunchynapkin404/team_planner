@@ -69,6 +69,7 @@ interface Team {
   name: string;
   description: string;
   department: string;
+  department_name: string;  // Add this for display
   manager: User | null;
   members: TeamMember[];
   created: string;
@@ -90,6 +91,9 @@ const TeamManagement: React.FC = () => {
   const [teamDialogOpen, setTeamDialogOpen] = useState(false);
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
   const [memberDialogOpen, setMemberDialogOpen] = useState(false);
+  const [addMemberDialogOpen, setAddMemberDialogOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<string>('');
+  const [selectedRole, setSelectedRole] = useState<string>('member');
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -106,7 +110,8 @@ const TeamManagement: React.FC = () => {
     try {
       // Load teams
       const teamsData = await apiClient.get(API_CONFIG.ENDPOINTS.TEAMS_LIST) as any;
-      setTeams(teamsData.results || teamsData);
+      const teamsArray = Array.isArray(teamsData) ? teamsData : (teamsData?.results || []);
+      setTeams(teamsArray);
 
       // Load departments
       const deptData = await apiClient.get(API_CONFIG.ENDPOINTS.DEPARTMENTS_LIST) as any;
@@ -143,7 +148,7 @@ const TeamManagement: React.FC = () => {
     setFormData({
       name: team.name,
       description: team.description,
-      department: team.department,
+      department: team.department.toString(), // This should be the department ID
       manager: team.manager?.id.toString() || '',
     });
     setTeamDialogOpen(true);
@@ -151,18 +156,39 @@ const TeamManagement: React.FC = () => {
 
   const handleSaveTeam = async () => {
     try {
+      // Validate required fields
+      if (!formData.name.trim()) {
+        setError('Team name is required');
+        return;
+      }
+      if (!formData.department) {
+        setError('Department is required');
+        return;
+      }
+
+      // Prepare data for API
+      const teamData = {
+        name: formData.name.trim(),
+        description: formData.description.trim(),
+        department: parseInt(formData.department), // Convert to number
+        manager: formData.manager ? parseInt(formData.manager) : null, // Convert to number or null
+      };
+
+      console.log('Sending team data:', teamData);
+
       if (selectedTeam) {
         // Update existing team
-        await apiClient.put(buildEndpointUrl(API_CONFIG.ENDPOINTS.TEAM_DETAIL, { id: selectedTeam.id }), formData);
+        await apiClient.put(buildEndpointUrl(API_CONFIG.ENDPOINTS.TEAM_DETAIL, { id: selectedTeam.id }), teamData);
       } else {
         // Create new team
-        await apiClient.post(API_CONFIG.ENDPOINTS.TEAMS_LIST, formData);
+        await apiClient.post(API_CONFIG.ENDPOINTS.TEAMS_LIST, teamData);
       }
       
       setTeamDialogOpen(false);
+      setError(null); // Clear any previous errors
       loadData(); // Reload data
-    } catch (err) {
-      setError('Failed to save team');
+    } catch (err: any) {
+      setError('Failed to save team: ' + (err.response?.data?.detail || err.message));
       console.error('Save team error:', err);
     }
   };
@@ -186,17 +212,44 @@ const TeamManagement: React.FC = () => {
     setMemberDialogOpen(true);
   };
 
-  const handleRemoveMember = async (teamId: number, memberId: number) => {
+  const handleRemoveMember = async (teamId: number, userId: number) => {
     if (!confirm('Are you sure you want to remove this member?')) {
       return;
     }
 
     try {
-      await apiClient.delete(buildEndpointUrl(API_CONFIG.ENDPOINTS.TEAM_MEMBER, { teamId, memberId }));
+      const memberData = { user_id: userId };
+      await apiClient.delete(buildEndpointUrl(API_CONFIG.ENDPOINTS.TEAM_REMOVE_MEMBER, { id: teamId }), { data: memberData });
       loadData(); // Reload data
     } catch (err) {
       setError('Failed to remove member');
       console.error('Remove member error:', err);
+    }
+  };
+
+  const handleSaveMember = async () => {
+    if (!selectedTeam || !selectedUser) {
+      setError('Please select a user to add');
+      return;
+    }
+
+    try {
+      const memberData = {
+        user_id: parseInt(selectedUser),
+        role: selectedRole,
+        fte: 1.0
+      };
+
+      await apiClient.post(buildEndpointUrl(API_CONFIG.ENDPOINTS.TEAM_ADD_MEMBER, { id: selectedTeam.id }), memberData);
+      
+      setAddMemberDialogOpen(false);
+      setSelectedUser('');
+      setSelectedRole('member');
+      setError(null);
+      loadData(); // Reload data
+    } catch (err: any) {
+      setError('Failed to add member: ' + (err.response?.data?.error || err.message));
+      console.error('Add member error:', err);
     }
   };
 
@@ -306,7 +359,7 @@ const TeamManagement: React.FC = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {teams.map((team) => (
+              {Array.isArray(teams) && teams.map((team) => (
                 <TableRow key={team.id}>
                   <TableCell>
                     <Box>
@@ -441,7 +494,7 @@ const TeamManagement: React.FC = () => {
                   label="Department"
                 >
                   {departments.map((dept) => (
-                    <MenuItem key={dept.id} value={dept.name}>
+                    <MenuItem key={dept.id} value={dept.id.toString()}>
                       {dept.name}
                     </MenuItem>
                   ))}
@@ -505,7 +558,7 @@ const TeamManagement: React.FC = () => {
                       <IconButton 
                         size="small" 
                         color="error"
-                        onClick={() => handleRemoveMember(selectedTeam.id, member.id)}
+                        onClick={() => handleRemoveMember(selectedTeam.id, member.user.id)}
                       >
                         <Remove />
                       </IconButton>
@@ -527,7 +580,69 @@ const TeamManagement: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setMemberDialogOpen(false)}>Close</Button>
-          <Button variant="contained" startIcon={<PersonAdd />}>
+          <Button 
+            variant="contained" 
+            startIcon={<PersonAdd />}
+            onClick={() => {
+              setSelectedUser('');
+              setSelectedRole('member');
+              setAddMemberDialogOpen(true);
+            }}
+          >
+            Add Member
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Add Member Dialog */}
+      <Dialog open={addMemberDialogOpen} onClose={() => setAddMemberDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          Add Member to {selectedTeam?.name}
+        </DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel>Select User</InputLabel>
+                <Select
+                  value={selectedUser}
+                  onChange={(e) => setSelectedUser(e.target.value)}
+                  label="Select User"
+                >
+                  <MenuItem value="">Select a user...</MenuItem>
+                  {users
+                    .filter(user => user.is_active && !selectedTeam?.members.some(member => member.user.id === user.id))
+                    .map((user) => (
+                      <MenuItem key={user.id} value={user.id.toString()}>
+                        {user.name || user.username} ({user.email})
+                      </MenuItem>
+                    ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel>Role</InputLabel>
+                <Select
+                  value={selectedRole}
+                  onChange={(e) => setSelectedRole(e.target.value)}
+                  label="Role"
+                >
+                  <MenuItem value="member">Member</MenuItem>
+                  <MenuItem value="lead">Lead</MenuItem>
+                  <MenuItem value="manager">Manager</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAddMemberDialogOpen(false)}>Cancel</Button>
+          <Button 
+            onClick={handleSaveMember} 
+            variant="contained"
+            disabled={!selectedUser}
+          >
             Add Member
           </Button>
         </DialogActions>

@@ -43,6 +43,7 @@ import {
   Schedule,
 } from '@mui/icons-material';
 import { apiClient } from '../services/apiClient';
+import { API_CONFIG } from '../config/api';
 import RecurringLeavePatterns from '../components/RecurringLeavePatterns';
 
 interface User {
@@ -127,7 +128,8 @@ const ProfileManagement: React.FC = () => {
     
     try {
       // Load user profile using the API client
-      const userData = await apiClient.get<User>('/api/users/me/');
+  // Use the full user endpoint so we get id and employee_profile
+  const userData = await apiClient.get<User>(API_CONFIG.ENDPOINTS.USERS_ME_FULL);
       setUser(userData);
       setEmployee(userData.employee_profile || null);
       setFormData({

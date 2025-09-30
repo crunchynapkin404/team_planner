@@ -39,7 +39,7 @@ const LoginForm: React.FC = () => {
     setError(null);
 
     try {
-      const result = await authService.login(credentials);
+      await authService.login(credentials);
       // Redirect to dashboard on successful login
       window.location.href = '/dashboard';
     } catch (err: any) {

@@ -1,4 +1,4 @@
-from .views import RecurringLeavePatternViewSet
 from .serializers import RecurringLeavePatternSerializer
+from .views import RecurringLeavePatternViewSet
 
-__all__ = ['RecurringLeavePatternViewSet', 'RecurringLeavePatternSerializer']
+__all__ = ["RecurringLeavePatternSerializer", "RecurringLeavePatternViewSet"]

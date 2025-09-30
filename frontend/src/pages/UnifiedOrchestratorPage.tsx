@@ -156,9 +156,12 @@ const UnifiedOrchestratorPage: React.FC = () => {
     const loadTeams = async () => {
       try {
         const teamData = await apiClient.get(API_CONFIG.ENDPOINTS.TEAMS_LIST) as any;
-        setTeams(teamData);
+        // Handle both direct array and paginated response formats
+        const teamsArray = Array.isArray(teamData) ? teamData : (teamData?.results || []);
+        setTeams(teamsArray);
       } catch (err) {
         console.error('Failed to load teams:', err);
+        setTeams([]); // Ensure teams is always an array
       }
     };
     loadTeams();
@@ -204,7 +207,7 @@ const UnifiedOrchestratorPage: React.FC = () => {
 
   // Map overview into local rolling state when team changes
   useEffect(() => {
-    if (!autoOverview || !selectedTeam) return;
+    if (!autoOverview || !selectedTeam || !Array.isArray(autoOverview.teams)) return;
     const team = autoOverview.teams.find((t: any) => t.id === selectedTeam);
     if (team && team.rolling_enabled) setRollingEnabled(team.rolling_enabled);
   }, [autoOverview, selectedTeam]);
@@ -450,7 +453,7 @@ const UnifiedOrchestratorPage: React.FC = () => {
                         onChange={(e) => setSelectedTeam(e.target.value as number)}
                         label="Team"
                       >
-                        {teams.map((team) => (
+                        {Array.isArray(teams) && teams.map((team) => (
                           <MenuItem key={team.id} value={team.id}>
                             {team.name}
                           </MenuItem>
@@ -616,7 +619,7 @@ const UnifiedOrchestratorPage: React.FC = () => {
                   Enable or disable automatic rolling planning per shift type for the selected team.
                 </Typography>
                 
-                {autoOverview && selectedTeam && (
+                {autoOverview && selectedTeam && Array.isArray(autoOverview.teams) && (
                   <Box sx={{ mb: 2 }}>
                     <Alert severity={autoOverview.teams.find((t:any)=>t.id===selectedTeam)?.seed_ready ? 'success' : 'warning'}>
                       {autoOverview.teams.find((t:any)=>t.id===selectedTeam)?.seed_ready 

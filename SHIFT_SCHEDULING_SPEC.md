@@ -100,6 +100,6 @@
 ## Important Notes
 
 1. **No Time Gaps**: Every hour of every day is covered by at least one engineer
-2. **Timezone**: [SPECIFY YOUR TIMEZONE - e.g., CET/CEST, EST, PST, etc.]
+2. **Timezone**: Europe/Amsterdam (CET/CEST)
 3. **Fairness**: Each shift type maintains separate rotation counters
 4. **Overlap**: During Wednesday handover, both outgoing and incoming Waakdienst engineers may overlap during Incidents hours for knowledge transfer

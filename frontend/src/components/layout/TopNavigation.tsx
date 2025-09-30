@@ -4,11 +4,10 @@ import {
   Toolbar,
   Typography,
   IconButton,
+  Box,
+  Avatar,
   Menu,
   MenuItem,
-  Avatar,
-  Box,
-  Button,
 } from '@mui/material';
 import {
   AccountCircle,

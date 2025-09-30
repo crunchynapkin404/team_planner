@@ -32,6 +32,8 @@ export const API_CONFIG = {
     TEAM_DETAIL: '/api/teams/{id}/',
     TEAM_MEMBERS: '/api/teams/{teamId}/members/',
     TEAM_MEMBER: '/api/teams/{teamId}/members/{memberId}/',
+    TEAM_ADD_MEMBER: '/api/teams/{id}/add_member/',
+    TEAM_REMOVE_MEMBER: '/api/teams/{id}/remove_member/',
     
     // Departments
     DEPARTMENTS_LIST: '/api/departments/',
@@ -86,7 +88,7 @@ export const API_CONFIG = {
 export const buildEndpointUrl = (endpoint: string, params: Record<string, string | number> = {}): string => {
   let url = endpoint;
   Object.entries(params).forEach(([key, value]) => {
-    url = url.replace(`{${key}}`, String(value));
+    url = url.replace(`{${key}}`, encodeURIComponent(String(value)));
   });
   return url;
 };

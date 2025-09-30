@@ -23,11 +23,20 @@ if [ -f ".envs/.local/.django" ]; then
     export $(cat .envs/.local/.django | grep -v '^#' | xargs)
 fi
 
+# Load Postgres environment variables only when using Docker
 if [ -f ".envs/.local/.postgres" ]; then
-    echo "Loading Postgres environment variables..."
-    export $(cat .envs/.local/.postgres | grep -v '^#' | xargs)
+    if [ "${USE_DOCKER}" = "yes" ]; then
+        echo "Loading Postgres environment variables (Docker)..."
+        export $(cat .envs/.local/.postgres | grep -v '^#' | xargs)
+    else
+        echo "Skipping Postgres env (USE_DOCKER=${USE_DOCKER:-no})"
+    fi
 fi
 
-# Start Django server on port 8000
+# Apply pending migrations (safe to run repeatedly in dev)
+echo "Applying database migrations (if any)..."
+python manage.py migrate --noinput || true
+
+# Start Django server on port 8000 (bind to all interfaces)
 echo "Starting Django server on port 8000..."
-python manage.py runserver 8000
+python manage.py runserver 0.0.0.0:8000

@@ -99,9 +99,9 @@ docker-compose -f docker-compose.fullstack.yml exec django python manage.py migr
 echo -e "${BLUE}✅ Full-Stack Docker Environment Ready!${NC}"
 echo -e "${GREEN}Services available at:${NC}"
 echo -e "${BLUE}🌐 React Frontend: http://localhost:3000${NC}"
-echo -e "${BLUE}🐍 Django Backend: http://localhost:8001${NC}"
-echo -e "${BLUE}👤 Django Admin: http://localhost:8001/admin/${NC}"
-echo -e "${BLUE}📚 API Documentation: http://localhost:8001/api/docs/${NC}"
+echo -e "${BLUE}🐍 Django Backend: http://localhost:8000${NC}"
+echo -e "${BLUE}👤 Django Admin: http://localhost:8000/admin/${NC}"
+echo -e "${BLUE}📚 API Documentation: http://localhost:8000/api/docs/${NC}"
 echo -e "${BLUE}📧 Mailpit (Email): http://localhost:8025${NC}"
 echo -e "${BLUE}🌺 Flower (Celery): http://localhost:5555${NC}"
 

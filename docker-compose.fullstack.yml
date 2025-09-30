@@ -21,8 +21,11 @@ services:
     env_file:
       - ./.envs/.local/.django
       - ./.envs/.local/.postgres
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings.local
+      - DATABASE_URL=postgres://debug:debug@postgres:5432/team_planner
     ports:
-      - '8001:8000'
+      - '8000:8000'
     command: /start
 
   frontend:

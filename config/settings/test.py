@@ -1,7 +1,7 @@
 """
 With these settings, tests run faster.
 """
-import tempfile
+
 import os
 
 # Import everything except databases first
@@ -9,7 +9,6 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///test.db")
 
 from .base import *  # noqa: F403
 from .base import TEMPLATES
-from .base import env
 
 # GENERAL
 # ------------------------------------------------------------------------------
@@ -25,7 +24,7 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": ":memory:",
-    }
+    },
 }
 
 # PASSWORDS
@@ -54,7 +53,7 @@ CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
         "LOCATION": "",
-    }
+    },
 }
 
 # LOGGING

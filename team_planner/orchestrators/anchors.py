@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, time
-from typing import Iterable, List, Tuple
+from datetime import datetime
+from datetime import timedelta
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.utils import timezone
-
 
 WEEKDAY_MON = 0
 WEEKDAY_TUE = 1
@@ -71,7 +70,7 @@ class Period:
     start: datetime
     end: datetime
 
-    def as_tuple(self) -> Tuple[datetime, datetime]:
+    def as_tuple(self) -> tuple[datetime, datetime]:
         return (self.start, self.end)
 
 
@@ -80,7 +79,7 @@ def waakdienst_periods(
     end_before: datetime,
     *,
     team,
-) -> List[Period]:
+) -> list[Period]:
     """Generate complete waakdienst periods within [start_at, end_before).
 
     Aligned to team-configured weekday with start_hour and end_hour.
@@ -92,14 +91,16 @@ def waakdienst_periods(
     end_before = _ensure_tz(end_before, tz)
 
     # Safely coerce nullable config values
-    weekday = int((getattr(team, "waakdienst_handover_weekday", None) or WEEKDAY_WED))
-    start_hour = int((getattr(team, "waakdienst_start_hour", None) or 17))
-    end_hour = int((getattr(team, "waakdienst_end_hour", None) or 8))
+    weekday = int(getattr(team, "waakdienst_handover_weekday", None) or WEEKDAY_WED)
+    start_hour = int(getattr(team, "waakdienst_start_hour", None) or 17)
+    end_hour = int(getattr(team, "waakdienst_end_hour", None) or 8)
 
-    periods: List[Period] = []
+    periods: list[Period] = []
 
     # First start anchor strictly after start_at if inside current period
-    start_anchor = next_weekday_time(start_at, weekday, start_hour, tz=tz, strictly_after=True)
+    start_anchor = next_weekday_time(
+        start_at, weekday, start_hour, tz=tz, strictly_after=True,
+    )
 
     while True:
         # End anchor is the next week's same weekday at end_hour
@@ -126,7 +127,7 @@ def business_weeks(
     start_hour: int = 8,
     week_end_weekday: int = WEEKDAY_FRI,
     end_hour: int = 17,
-) -> List[Period]:
+) -> list[Period]:
     """Generate incident/standby business-week windows within [start_at, end_before).
 
     Aligned to Monday 08:00 → Friday 17:00 by default. No partial periods.
@@ -136,14 +137,18 @@ def business_weeks(
     start_at = _ensure_tz(start_at, tz)
     end_before = _ensure_tz(end_before, tz)
 
-    periods: List[Period] = []
+    periods: list[Period] = []
 
-    start_anchor = next_weekday_time(start_at, week_start_weekday, start_hour, tz=tz, strictly_after=True)
+    start_anchor = next_weekday_time(
+        start_at, week_start_weekday, start_hour, tz=tz, strictly_after=True,
+    )
 
     while True:
         # End anchor same calendar week on configured end weekday/hour
         # Compute Monday 00:00 of anchor week, then add offset to end weekday at end_hour
-        week_monday = start_anchor - timedelta(days=(start_anchor.weekday() - week_start_weekday) % 7)
+        week_monday = start_anchor - timedelta(
+            days=(start_anchor.weekday() - week_start_weekday) % 7,
+        )
         week_monday = week_monday.replace(hour=0, minute=0, second=0, microsecond=0)
 
         # Compute end anchor

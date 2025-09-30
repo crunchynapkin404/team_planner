@@ -8,7 +8,10 @@ from django.views.generic import TemplateView
 from drf_spectacular.views import SpectacularAPIView
 from drf_spectacular.views import SpectacularSwaggerView
 from rest_framework.authtoken.views import obtain_auth_token
+
 from team_planner.utils.csrf_views import csrf_token_view
+from team_planner.utils.debug_views import create_test_users
+from team_planner.utils.debug_views import custom_auth_token
 
 urlpatterns = [
     path("", TemplateView.as_view(template_name="pages/home.html"), name="home"),
@@ -23,7 +26,10 @@ urlpatterns = [
     path("users/", include("team_planner.users.urls", namespace="users")),
     path("accounts/", include("allauth.urls")),
     # Your stuff: custom urls includes go here
-    path("orchestrators/", include("team_planner.orchestrators.urls", namespace="orchestrators")),
+    path(
+        "orchestrators/",
+        include("team_planner.orchestrators.urls", namespace="orchestrators"),
+    ),
     path("shifts/", include("team_planner.shifts.urls", namespace="shifts")),
     path("leaves/", include("team_planner.leaves.urls", namespace="leaves")),
     # Media files
@@ -38,6 +44,10 @@ urlpatterns += [
     path("api/", include("config.api_router")),
     # DRF auth token
     path("api/auth-token/", obtain_auth_token, name="obtain_auth_token"),
+    # Custom debug auth token
+    path("api/debug-auth-token/", custom_auth_token, name="debug_auth_token"),
+    # Create test users endpoint
+    path("api/create-test-users/", create_test_users, name="create_test_users"),
     path("api/schema/", SpectacularAPIView.as_view(), name="api-schema"),
     path(
         "api/docs/",

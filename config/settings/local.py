@@ -13,7 +13,7 @@ SECRET_KEY = env(
     default="WW8I7LgLw1NTijKqvs0xohT80FDvclaJaROVpKm1X6VzUWcNEfiHtqgaqMZUKsbX",
 )
 # https://docs.djangoproject.com/en/dev/ref/settings/#allowed-hosts
-ALLOWED_HOSTS = ["localhost", "0.0.0.0", "127.0.0.1", "localhost:3000", "localhost:8000", "testserver"]  # noqa: S104
+ALLOWED_HOSTS = ["*"]  # Allow all hosts in development
 
 # CACHES
 # ------------------------------------------------------------------------------
@@ -56,7 +56,7 @@ DEBUG_TOOLBAR_CONFIG = {
 }
 # https://django-debug-toolbar.readthedocs.io/en/latest/installation.html#internal-ips
 INTERNAL_IPS = ["127.0.0.1", "10.0.2.2"]
-if env("USE_DOCKER") == "yes":
+if env("USE_DOCKER", default="no") == "yes":
     import socket
 
     hostname, _, ips = socket.gethostbyname_ex(socket.gethostname())
@@ -87,17 +87,19 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
     "http://localhost:3001",
     "http://127.0.0.1:3001",
+    "http://10.0.10.41:3000",
+    "http://10.0.10.41:3001",
 ]
 CORS_ALLOW_HEADERS = [
-    'accept',
-    'accept-encoding',
-    'authorization',
-    'content-type',
-    'dnt',
-    'origin',
-    'user-agent',
-    'x-csrftoken',
-    'x-requested-with',
+    "accept",
+    "accept-encoding",
+    "authorization",
+    "content-type",
+    "dnt",
+    "origin",
+    "user-agent",
+    "x-csrftoken",
+    "x-requested-with",
 ]
 # Override the CORS_URLS_REGEX from base settings to allow all URLs
 CORS_URLS_REGEX = r"^.*$"
@@ -112,6 +114,11 @@ CSRF_TRUSTED_ORIGINS = [
     "http://127.0.0.1:3001",
     "http://localhost:8000",
     "http://127.0.0.1:8000",
+    # Docker container IPs
+    "http://172.19.0.9:3000",  # frontend container
+    "http://172.19.0.5:8000",  # django container
+    "http://10.0.10.41:3000",  # external access IP
+    "http://10.0.10.41:8000",  # external Django API
 ]
 
 # For development, use only TokenAuthentication for API endpoints to avoid CSRF issues
@@ -127,3 +134,14 @@ REST_FRAMEWORK = {
 
 # Your stuff...
 # ------------------------------------------------------------------------------
+
+# Database override for Docker
+# ------------------------------------------------------------------------------
+# For local development, always use SQLite
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": "db.sqlite3",
+        "ATOMIC_REQUESTS": True,
+    },
+}

@@ -211,7 +211,7 @@ describe('useOrchestrator Hook', () => {
         payload: mockPayload,
       };
       
-      mockedScheduleOrchestrationAsync.mockReturnValue(mockResult as any);
+      mockScheduleOrchestrationAsync.mockReturnValue(mockResult as any);
       
       const { result } = renderHook(() => useOrchestrator(), {
         wrapper: createWrapper(store),
@@ -236,7 +236,7 @@ describe('useOrchestrator Hook', () => {
         payload: mockError,
       };
       
-      mockedScheduleOrchestrationAsync.mockReturnValue(mockResult as any);
+      mockScheduleOrchestrationAsync.mockReturnValue(mockResult as any);
       
       const { result } = renderHook(() => useOrchestrator(), {
         wrapper: createWrapper(store),
@@ -261,7 +261,7 @@ describe('useOrchestrator Hook', () => {
         payload: { id: 1 },
       };
       
-      mockedScheduleOrchestrationAsync.mockReturnValue(mockResult as any);
+      mockScheduleOrchestrationAsync.mockReturnValue(mockResult as any);
       
       const { result } = renderHook(() => useOrchestrator(), {
         wrapper: createWrapper(store),
@@ -272,7 +272,7 @@ describe('useOrchestrator Hook', () => {
       });
 
       expect(mockedOrchestratorService.getCurrentWeekRange).toHaveBeenCalled();
-      expect(mockedScheduleOrchestrationAsync).toHaveBeenCalledWith({
+      expect(mockScheduleOrchestrationAsync).toHaveBeenCalledWith({
         start_date: '2024-01-15',
         end_date: '2024-01-21',
         department_id: 'dept1',
@@ -287,7 +287,7 @@ describe('useOrchestrator Hook', () => {
         payload: { id: 1 },
       };
       
-      mockedScheduleOrchestrationAsync.mockReturnValue(mockResult as any);
+      mockScheduleOrchestrationAsync.mockReturnValue(mockResult as any);
       
       const { result } = renderHook(() => useOrchestrator(), {
         wrapper: createWrapper(store),
@@ -298,7 +298,7 @@ describe('useOrchestrator Hook', () => {
       });
 
       expect(mockedOrchestratorService.getNextWeekRange).toHaveBeenCalled();
-      expect(mockedScheduleOrchestrationAsync).toHaveBeenCalledWith({
+      expect(mockScheduleOrchestrationAsync).toHaveBeenCalledWith({
         start_date: '2024-01-22',
         end_date: '2024-01-28',
         department_id: 'dept2',
@@ -313,7 +313,7 @@ describe('useOrchestrator Hook', () => {
         payload: { coverage: 95 },
       };
       
-      mockedGetCoverageAsync.mockReturnValue(mockResult as any);
+      mockGetCoverageAsync.mockReturnValue(mockResult as any);
       
       const { result } = renderHook(() => useOrchestrator(), {
         wrapper: createWrapper(store),
@@ -324,7 +324,7 @@ describe('useOrchestrator Hook', () => {
       });
 
       expect(mockedOrchestratorService.getCurrentWeekRange).toHaveBeenCalled();
-      expect(mockedGetCoverageAsync).toHaveBeenCalledWith({
+      expect(mockGetCoverageAsync).toHaveBeenCalledWith({
         start_date: '2024-01-15',
         end_date: '2024-01-21',
         department_id: 'dept1',
@@ -338,7 +338,7 @@ describe('useOrchestrator Hook', () => {
         payload: [{ id: 1, name: 'John Doe' }],
       };
       
-      mockedGetAvailabilityAsync.mockReturnValue(mockResult as any);
+      mockGetAvailabilityAsync.mockReturnValue(mockResult as any);
       
       const { result } = renderHook(() => useOrchestrator(), {
         wrapper: createWrapper(store),
@@ -349,7 +349,7 @@ describe('useOrchestrator Hook', () => {
       });
 
       expect(mockedOrchestratorService.getCurrentWeekRange).toHaveBeenCalled();
-      expect(mockedGetAvailabilityAsync).toHaveBeenCalledWith({
+      expect(mockGetAvailabilityAsync).toHaveBeenCalledWith({
         start_date: '2024-01-15',
         end_date: '2024-01-21',
         shift_type: 'incidents',
@@ -366,7 +366,7 @@ describe('useOrchestrator Hook', () => {
         payload: { status: 'healthy' },
       };
       
-      mockedGetSystemHealthAsync.mockReturnValue(mockResult as any);
+      mockGetSystemHealthAsync.mockReturnValue(mockResult as any);
       
       const { result } = renderHook(() => useOrchestrator(), {
         wrapper: createWrapper(store),
@@ -376,7 +376,7 @@ describe('useOrchestrator Hook', () => {
         await result.current.refreshSystemHealth();
       });
 
-      expect(mockedGetSystemHealthAsync).toHaveBeenCalled();
+      expect(mockGetSystemHealthAsync).toHaveBeenCalled();
     });
 
     it('should call refreshMetrics correctly', async () => {
@@ -386,7 +386,7 @@ describe('useOrchestrator Hook', () => {
         payload: { totalEmployees: 25 },
       };
       
-      mockedGetSystemMetricsAsync.mockReturnValue(mockResult as any);
+      mockGetSystemMetricsAsync.mockReturnValue(mockResult as any);
       
       const { result } = renderHook(() => useOrchestrator(), {
         wrapper: createWrapper(store),
@@ -396,12 +396,21 @@ describe('useOrchestrator Hook', () => {
         await result.current.refreshMetrics();
       });
 
-      expect(mockedGetSystemMetricsAsync).toHaveBeenCalled();
+      expect(mockGetSystemMetricsAsync).toHaveBeenCalled();
     });
 
     it('should correctly identify system health status', () => {
       const healthyStore = createTestStore({
-        systemHealth: { status: 'healthy' },
+        systemHealth: { 
+          status: 'healthy' as const,
+          timestamp: new Date().toISOString(),
+          version: '1.0.0',
+          components: {
+            database: 'healthy' as const,
+            orchestrator: 'healthy' as const,
+            cache: 'healthy' as const,
+          }
+        },
       });
       
       const { result: healthyResult } = renderHook(() => useOrchestrator(), {
@@ -411,7 +420,16 @@ describe('useOrchestrator Hook', () => {
       expect(healthyResult.current.isSystemHealthy).toBe(true);
 
       const unhealthyStore = createTestStore({
-        systemHealth: { status: 'unhealthy' },
+        systemHealth: { 
+          status: 'unhealthy' as const,
+          timestamp: new Date().toISOString(),
+          version: '1.0.0',
+          components: {
+            database: 'unhealthy' as const,
+            orchestrator: 'unhealthy' as const,
+            cache: 'unhealthy' as const,
+          }
+        },
       });
       
       const { result: unhealthyResult } = renderHook(() => useOrchestrator(), {
@@ -474,7 +492,13 @@ describe('useOrchestrator Hook', () => {
 
     it('should reset state correctly', () => {
       const store = createTestStore({
-        lastOrchestration: { id: 1 },
+        lastOrchestration: { 
+          success: true,
+          statistics: { assignments_made: 0, unassigned_shifts: 0, conflicts_detected: 0, warnings: 0 },
+          assignments: [],
+          conflicts: [],
+          warnings: []
+        },
         error: 'Some error',
         selectedDepartment: 'dept1',
       });
@@ -508,7 +532,13 @@ describe('useOrchestrator Hook', () => {
 
     it('should correctly identify if there is last orchestration', () => {
       const withOrchestrationStore = createTestStore({
-        lastOrchestration: { id: 1, status: 'completed' },
+        lastOrchestration: { 
+          success: true,
+          statistics: { assignments_made: 1, unassigned_shifts: 0, conflicts_detected: 0, warnings: 0 },
+          assignments: [],
+          conflicts: [],
+          warnings: []
+        },
       });
       
       const { result } = renderHook(() => useOrchestrator(), {
@@ -524,7 +554,16 @@ describe('useOrchestratorStatus Hook', () => {
   it('should return correct status information', () => {
     const store = createTestStore({
       orchestrationStatus: 'running',
-      systemHealth: { status: 'healthy' },
+      systemHealth: { 
+        status: 'healthy' as const,
+        timestamp: new Date().toISOString(),
+        version: '1.0.0',
+        components: {
+          database: 'healthy' as const,
+          orchestrator: 'healthy' as const,
+          cache: 'healthy' as const,
+        }
+      },
       loading: true,
       error: 'Some error',
     });
@@ -545,10 +584,35 @@ describe('useOrchestratorStatus Hook', () => {
 describe('useOrchestratorData Hook', () => {
   it('should return correct data information', () => {
     const store = createTestStore({
-      lastOrchestration: { id: 1 },
-      coverageData: { coverage: 95 },
-      availabilityData: [{ id: 1, name: 'John' }],
-      systemMetrics: { totalEmployees: 25 },
+      lastOrchestration: { 
+        success: true,
+        statistics: { assignments_made: 1, unassigned_shifts: 0, conflicts_detected: 0, warnings: 0 },
+        assignments: [],
+        conflicts: [],
+        warnings: []
+      },
+      coverageData: { 
+        date_range: { start_date: '2024-01-01', end_date: '2024-01-07' },
+        coverage_by_date: {},
+        summary: { total_days: 7, days_with_coverage: 6, days_without_coverage: 1, coverage_percentage: 95 }
+      },
+      availabilityData: [{ 
+        employee_id: 1, 
+        name: 'John',
+        email: 'john@example.com',
+        available_for_incidents: true,
+        available_for_waakdienst: true,
+        current_assignments_count: 2
+      }],
+      systemMetrics: { 
+        total_active_employees: 25,
+        total_shifts_last_30_days: 100,
+        assigned_shifts_last_30_days: 90,
+        assignment_rate_percentage: 90,
+        unassigned_shifts_last_30_days: 10,
+        average_orchestration_time_seconds: 1.5,
+        timestamp: new Date().toISOString()
+      },
     });
     
     const { result } = renderHook(() => useOrchestratorData(), {

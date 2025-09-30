@@ -8,7 +8,7 @@ export interface CalendarEvent {
   backgroundColor?: string;
   borderColor?: string;
   extendedProps?: {
-    shiftType?: 'incident' | 'waakdienst' | 'project' | 'change';
+    shiftType?: 'incident' | 'incidents' | 'incidents_standby' | 'waakdienst' | 'project' | 'change';
     leaveType?: 'vacation' | 'sick' | 'personal' | 'other';
     engineerName: string;
     engineerId: string;
@@ -34,7 +34,7 @@ export interface CalendarResource {
 }
 
 // Shift Types
-export type ShiftType = 'incident' | 'waakdienst' | 'project' | 'change';
+export type ShiftType = 'incident' | 'incidents' | 'incidents_standby' | 'waakdienst' | 'project' | 'change';
 export type ShiftStatus = 'confirmed' | 'pending' | 'swap_requested';
 
 // Engineer/Employee Types

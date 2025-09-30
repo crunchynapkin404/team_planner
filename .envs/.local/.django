@@ -1,14 +1,19 @@
 # General
 # ------------------------------------------------------------------------------
-USE_DOCKER=false
+USE_DOCKER=no
 IPYTHONDIR=/app/.ipython
 DEBUG=True
 
-# Database
+# Database (use SQLite for local non-Docker development)
 # ------------------------------------------------------------------------------
 DATABASE_URL=sqlite:///db.sqlite3
 
-# Redis
+# Django Settings
+# ------------------------------------------------------------------------------
+DJANGO_SETTINGS_MODULE=config.settings.local
+DJANGO_READ_DOT_ENV_FILE=False
+
+# Redis (local default; optional for basic dev)
 # ------------------------------------------------------------------------------
 REDIS_URL=redis://localhost:6379/0
 

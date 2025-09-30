@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 from django.db import transaction
-from django.utils import timezone
 
-from .models import Shift, ShiftAuditLog
+from .models import Shift
+from .models import ShiftAuditLog
 
 
 @dataclass
@@ -32,13 +31,18 @@ def reassign_shift_transactional(
     from_employee = shift.assigned_employee
 
     # Guard: prevent overlapping double-booking for target employee
-    overlap = Shift.objects.filter(
-        assigned_employee=new_employee,
-        start_datetime__lt=shift.end_datetime,
-        end_datetime__gt=shift.start_datetime,
-    ).exclude(pk=shift.pk).exists()
+    overlap = (
+        Shift.objects.filter(
+            assigned_employee=new_employee,
+            start_datetime__lt=shift.end_datetime,
+            end_datetime__gt=shift.start_datetime,
+        )
+        .exclude(pk=shift.pk)
+        .exists()
+    )
     if overlap:
-        raise ValueError("Target employee has conflicting shifts during this period")
+        msg = "Target employee has conflicting shifts during this period"
+        raise ValueError(msg)
 
     shift.assigned_employee = new_employee
     shift.notes = f"{(shift.notes or '').strip()}\n{reason}".strip()
@@ -56,8 +60,8 @@ def reassign_shift_transactional(
 
     return ReassignmentResult(
         shift_id=int(shift.pk),
-        from_employee_id=int(getattr(from_employee, 'pk')),
-        to_employee_id=int(getattr(new_employee, 'pk')),
+        from_employee_id=int(from_employee.pk),
+        to_employee_id=int(new_employee.pk),
         notes=reason,
     )
 
@@ -78,19 +82,29 @@ def swap_shifts_transactional(
     emp_b = shift_b.assigned_employee
 
     # Overlap guards after swap
-    if Shift.objects.filter(
-        assigned_employee=emp_b,
-        start_datetime__lt=shift_a.end_datetime,
-        end_datetime__gt=shift_a.start_datetime,
-    ).exclude(pk=shift_b.pk).exists():
-        raise ValueError("Swap would create overlap for target employee")
+    if (
+        Shift.objects.filter(
+            assigned_employee=emp_b,
+            start_datetime__lt=shift_a.end_datetime,
+            end_datetime__gt=shift_a.start_datetime,
+        )
+        .exclude(pk=shift_b.pk)
+        .exists()
+    ):
+        msg = "Swap would create overlap for target employee"
+        raise ValueError(msg)
 
-    if Shift.objects.filter(
-        assigned_employee=emp_a,
-        start_datetime__lt=shift_b.end_datetime,
-        end_datetime__gt=shift_b.start_datetime,
-    ).exclude(pk=shift_a.pk).exists():
-        raise ValueError("Swap would create overlap for requesting employee")
+    if (
+        Shift.objects.filter(
+            assigned_employee=emp_a,
+            start_datetime__lt=shift_b.end_datetime,
+            end_datetime__gt=shift_b.start_datetime,
+        )
+        .exclude(pk=shift_a.pk)
+        .exists()
+    ):
+        msg = "Swap would create overlap for requesting employee"
+        raise ValueError(msg)
 
     # Perform swap
     shift_a.assigned_employee = emp_b
