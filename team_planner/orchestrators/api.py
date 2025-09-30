@@ -63,7 +63,8 @@ def orchestrator_create_api(request):
         start_date_str = data.get("start_date")
         end_date_str = data.get("end_date")
         # preview_only may arrive as bool or string
-        _raw_preview = data.get("preview_only", True)
+        # Default to False for better UX - users expect shifts to be created unless explicitly previewing
+        _raw_preview = data.get("preview_only", False)
         if isinstance(_raw_preview, str):
             preview_only = _raw_preview.lower() == "true"
         else:
@@ -196,7 +197,7 @@ def orchestrator_create_api(request):
                     dry_run=preview_only,
                     user=request.user,
                 )
-
+                
                 if preview_only:
                     result = orchestrator.preview_schedule()
 

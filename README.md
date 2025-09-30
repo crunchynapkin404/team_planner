@@ -1,11 +1,34 @@
 # Team Planner
 
-Team Management System
+Advanced Team Scheduling & Management System
 
 [![Built with Cookiecutter Django](https://img.shields.io/badge/built%20with-Cookiecutter%20Django-ff69b4.svg?logo=cookiecutter)](https://github.com/cookiecutter/cookiecutter-django/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
 License: MIT
+
+## 🚀 Quick Start
+
+**Get up and running in 5 minutes:**
+
+```bash
+# 1. Set up environment
+export DATABASE_URL=sqlite:///db.sqlite3
+export DJANGO_SETTINGS_MODULE=config.settings.local
+
+# 2. Run automated setup (fixes critical issues & creates sample data)
+python3 debug_and_setup.py
+
+# 3. Start development server
+python3 manage.py runserver
+```
+
+## 📖 Documentation
+
+- **[Quick Start Checklist](QUICK_START_CHECKLIST.md)** - 30-minute setup guide
+- **[Complete Development Setup](DEVELOPMENT_SETUP_GUIDE.md)** - Detailed debugging guide  
+- **[Strategic Roadmap](STRATEGIC_ROADMAP.md)** - Development priorities
+- **[Testing Summary](TESTING_SUMMARY.md)** - Current test status & analysis
 
 ## Settings
 

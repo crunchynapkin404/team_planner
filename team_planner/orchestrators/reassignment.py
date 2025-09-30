@@ -51,9 +51,10 @@ class ReassignmentStrategy:
 class ShiftReassignmentManager:
     """Manages automatic reassignment of shifts when conflicts are detected."""
 
-    def __init__(self, orchestration_run: OrchestrationRun, fairness_calculator=None):
+    def __init__(self, orchestration_run: OrchestrationRun, fairness_calculator=None, team_id: int | None = None):
         self.orchestration_run = orchestration_run
         self.fairness_calculator = fairness_calculator
+        self.team_id = team_id  # Store team_id for proper filtering
         self.reassignment_log = []
         self.conflicts_detected = []
         self._employee_cache = {}  # Cache to avoid repeated DB queries
@@ -80,7 +81,7 @@ class ShiftReassignmentManager:
         """Update assignment with new employee, handling both old and new formats."""
         if "assigned_employee_id" in assignment:
             assignment["assigned_employee_id"] = new_employee.pk
-            assignment["assigned_employee_name"] = new_employee.get_full_name()
+            assignment["assigned_employee_name"] = new_employee.get_full_name() or new_employee.username
         else:
             assignment["assigned_employee"] = new_employee
 
@@ -742,7 +743,7 @@ class ShiftReassignmentManager:
         constraint_checker = ConstraintChecker(
             start_datetime,
             end_datetime,
-            team_id=getattr(self.orchestration_run, "team_id", None),
+            team_id=self.team_id,  # Use the team_id passed to the constructor
         )
 
         # Get all available employees
@@ -761,7 +762,11 @@ class ShiftReassignmentManager:
                 if not constraint_checker.check_recurring_pattern_conflicts(
                     emp, start_datetime, end_datetime, shift_type,
                 ):
-                    available_for_reassignment.append(emp)
+                    # Check if employee already has existing incidents/incidents-standby assignments
+                    if not constraint_checker.check_existing_assignments(
+                        emp, start_datetime, end_datetime, shift_type,
+                    ):
+                        available_for_reassignment.append(emp)
 
         return available_for_reassignment
 

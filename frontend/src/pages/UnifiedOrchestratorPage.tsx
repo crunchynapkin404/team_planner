@@ -121,7 +121,7 @@ const UnifiedOrchestratorPage: React.FC = () => {
   // Orchestration form state
   const [startDate, setStartDate] = useState<Date | null>(getNextMonday());
   const [endDate, setEndDate] = useState<Date | null>(getEndOfYear());
-  const [previewOnly, setPreviewOnly] = useState(true);
+  const [previewOnly, setPreviewOnly] = useState(false);
   const [scheduleIncidents, setScheduleIncidents] = useState(true);
   const [scheduleIncidentsStandby, setScheduleIncidentsStandby] = useState(false);
   const [scheduleWaakdienst, setScheduleWaakdienst] = useState(true);

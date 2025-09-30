@@ -73,7 +73,8 @@ def orchestrator_schedule_v2(request):
         department_id = data.get("department_id")
         start_date_str = data.get("start_date")
         end_date_str = data.get("end_date")
-        preview_only = data.get("preview_only", True)
+        # Default to False for better UX - users expect shifts to be created unless explicitly previewing
+        preview_only = data.get("preview_only", False)
         data.get("algorithm_config", {})
 
         # Validate required fields

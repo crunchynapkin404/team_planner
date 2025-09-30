@@ -138,7 +138,7 @@ class BaseOrchestrator(ABC):
 
             # Create reassignment manager
             reassignment_manager = ShiftReassignmentManager(
-                self.orchestration_run, self.fairness_calculator,
+                self.orchestration_run, self.fairness_calculator, team_id=self.team_id,
             )
 
             logger.info("Starting conflict detection and reassignment...")

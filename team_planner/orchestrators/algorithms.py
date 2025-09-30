@@ -302,7 +302,8 @@ class FairnessCalculator:
         self, assignments: dict[int, dict[str, float]],
     ) -> dict[int, float]:
         """Calculate fairness scores based on proportional hour distribution.
-        Uses percentage deviation: score = 100 - (|assigned - expected| / max(1, expected)) * 100.
+        Uses progressive penalty system: score = 100 - (|assigned - expected| / max(1, expected)) * 100.
+        Enhanced with diminishing returns for over-assignment and under-assignment penalties.
         Accepts both hour-based dicts (with 'total_hours') and legacy count-based dicts.
         """
         if not assignments:
@@ -390,10 +391,18 @@ class FairnessCalculator:
                 if expected_hours <= 0:
                     fairness_score = 100.0 if employee_assigned_hours == 0 else 0.0
                 else:
-                    deviation_ratio = (
-                        abs(employee_assigned_hours - expected_hours) / expected_hours
-                    )
-                    fairness_score = max(0.0, 100.0 - (deviation_ratio * 100.0))
+                    # Enhanced fairness calculation with progressive penalties
+                    deviation_ratio = (employee_assigned_hours - expected_hours) / expected_hours
+                    
+                    if deviation_ratio >= 0:
+                        # Over-assignment: progressive penalty with diminishing returns
+                        # Penalty starts mild but increases exponentially for extreme over-assignment
+                        penalty = min(100.0, (deviation_ratio ** 1.5) * 75.0)
+                    else:
+                        # Under-assignment: linear penalty but less severe than over-assignment
+                        penalty = min(100.0, abs(deviation_ratio) * 60.0)
+                    
+                    fairness_score = max(0.0, 100.0 - penalty)
             else:
                 fairness_score = 100.0
 
@@ -545,12 +554,41 @@ class ConstraintChecker:
         if shift_type == ShiftType.WAAKDIENST:
             return False
 
-        # RECURRING LEAVE REASSIGNMENT FIX:
-        # Always allow assignments - conflicts will be resolved by reassignment manager
-        # This ensures employees with recurring leave patterns are not excluded entirely
-        logger.debug(
-            f"Allowing assignment for {employee.username} - conflicts will be handled by reassignment",
+        from team_planner.employees.models import RecurringLeavePattern
+
+        # Get active recurring patterns for this employee
+        patterns = RecurringLeavePattern.objects.filter(
+            employee=employee,
+            is_active=True,
+            effective_from__lte=end_date.date(),
+        ).filter(
+            models.Q(effective_until__isnull=True)
+            | models.Q(effective_until__gte=start_date.date()),
         )
+
+        # Check each day in the assignment period
+        current_date = start_date.date()
+        end_date_check = end_date.date()
+
+        while current_date <= end_date_check:
+            # Only check weekdays for incidents shifts
+            if current_date.weekday() < 5:  # Monday=0, Friday=4
+                for pattern in patterns:
+                    if pattern.applies_to_date(current_date):
+                        affected_hours = pattern.get_affected_hours_for_date(current_date)
+                        if affected_hours:
+                            # Check if assignment time actually overlaps with the pattern's affected hours
+                            pattern_start = affected_hours["start_datetime"]
+                            pattern_end = affected_hours["end_datetime"]
+
+                            # Check for time overlap: assignments overlap if start1 < end2 and start2 < end1
+                            if start_date < pattern_end and pattern_start < end_date:
+                                logger.debug(
+                                    f"Recurring leave conflict found for {employee.username} on {current_date}: {pattern.name}"
+                                )
+                                return True
+            current_date += timedelta(days=1)
+
         return False
 
     def get_partial_availability_for_week(
@@ -1282,71 +1320,62 @@ class ShiftOrchestrator:
 
         # Strategy 1: Try to assign to someone fully available first
         if fully_available and partially_available:
-            # Compare best fully-available vs best partially-available by fairness load
-            def load_for(emp):
-                emp_assignments = current_assignments.get(
-                    emp.pk,
-                    {"incidents": 0.0, "incidents_standby": 0.0, "waakdienst": 0.0},
-                )
-                current_hours = emp_assignments.get(shift_type.lower(), 0.0)
-                new_hours = new_assignments[emp.pk].get(shift_type.lower(), 0.0)
-                return current_hours + new_hours
-
-            def sort_key_with_new(emp_data):
-                emp = emp_data["employee"]
-                return load_for(emp)
-
-            fully_available.sort(key=sort_key_with_new)
-            best_full = fully_available[0]
-
-            # Sort partial by availability percentage (desc) then fairness load (asc)
-            def sort_key_partial(emp_data):
+            # Use enhanced fairness to compare best fully-available vs best partially-available
+            fully_eligible = [data["employee"] for data in fully_available]
+            best_full_emp = self._select_employee_by_enhanced_fairness(
+                fully_eligible, current_assignments, new_assignments, shift_type
+            )
+            
+            # For partial, consider availability percentage in selection
+            def enhanced_partial_score(emp_data):
                 emp = emp_data["employee"]
                 availability_pct = emp_data["info"].get("availability_percentage", 0)
-                return (-availability_pct, load_for(emp))
-
-            partially_available.sort(key=sort_key_partial)
+                
+                # Calculate fairness as if fully assigned
+                emp_current = current_assignments.get(
+                    emp.pk, 
+                    {"incidents": 0.0, "incidents_standby": 0.0, "waakdienst": 0.0, "total_hours": 0.0}
+                )
+                
+                # Weight availability percentage heavily (70%) + fairness (30%)
+                return (availability_pct * 0.7) + (100 - emp_current.get("total_hours", 0)) * 0.3
+            
+            partially_available.sort(key=enhanced_partial_score, reverse=True)
             best_partial = partially_available[0]
 
-            # Threshold: prefer partial if availability >= 60% and fairness load is not worse than full by more than 2 hours
-            partial_availability = best_partial["info"].get(
-                "availability_percentage", 0,
-            )
-            full_load = load_for(best_full["employee"])
-            partial_load = load_for(best_partial["employee"])
-
-            if partial_availability >= 60 and partial_load <= full_load + 2:
-                # Assign partial week with coverage
-                return self.assign_partial_week_with_coverage(
-                    week_start,
-                    week_end,
-                    shift_type,
-                    [best_partial],
-                    available_employees,
-                    current_assignments,
-                    new_assignments,
-                    daily_shifts,
-                )
+            # Threshold: prefer partial if availability >= 60% and employee has better fairness position
+            partial_availability = best_partial["info"].get("availability_percentage", 0)
+            
+            if partial_availability >= 60:
+                # Compare fairness loads
+                best_full_load = current_assignments.get(best_full_emp.pk, {}).get("total_hours", 0)
+                best_partial_load = current_assignments.get(best_partial["employee"].pk, {}).get("total_hours", 0)
+                
+                # Prefer partial if they have significantly lower current load (fairness consideration)
+                if best_partial_load <= best_full_load - 10:  # 10+ hour difference threshold
+                    return self.assign_partial_week_with_coverage(
+                        week_start,
+                        week_end,
+                        shift_type,
+                        [best_partial],
+                        available_employees,
+                        current_assignments,
+                        new_assignments,
+                        daily_shifts,
+                    )
+            
             # Assign full week to best full candidate
-            assigned_employee = best_full["employee"]
+            assigned_employee = best_full_emp
             return self.create_full_week_assignments(
                 assigned_employee, daily_shifts, shift_type, new_assignments,
             )
 
         if fully_available and not partially_available:
-            # Sort by fairness + new assignments
-            def sort_key_with_new(emp_data):
-                emp = emp_data["employee"]
-                emp_assignments = current_assignments.get(
-                    emp.pk,
-                    {"incidents": 0.0, "incidents_standby": 0.0, "waakdienst": 0.0},
-                )
-                current_hours = emp_assignments.get(shift_type.lower(), 0.0)
-                new_hours = new_assignments[emp.pk].get(shift_type.lower(), 0.0)
-                return current_hours + new_hours
-
-            fully_available.sort(key=sort_key_with_new)
-            assigned_employee = fully_available[0]["employee"]
+            # Use enhanced fairness selection for fully available employees
+            eligible_employees = [data["employee"] for data in fully_available]
+            assigned_employee = self._select_employee_by_enhanced_fairness(
+                eligible_employees, current_assignments, new_assignments, shift_type
+            )
             return self.create_full_week_assignments(
                 assigned_employee, daily_shifts, shift_type, new_assignments,
             )
@@ -1819,21 +1848,136 @@ class ShiftOrchestrator:
             logger.warning(f"No eligible employees for {shift_type} week {week_start}")
             return []
 
-        # Sort by fairness (least assigned first) + new assignments
-        def sort_key(emp):
+        # Simple but effective fairness-based selection
+        def get_total_hours(emp):
             emp_assignments = current_assignments.get(
-                emp.pk, {"incidents": 0.0, "incidents_standby": 0.0, "waakdienst": 0.0},
+                emp.pk, {"incidents": 0.0, "incidents_standby": 0.0, "waakdienst": 0.0, "total_hours": 0.0}
             )
-            current_hours = emp_assignments.get(shift_type.lower(), 0.0)
-            new_hours = new_assignments[emp.pk].get(shift_type.lower(), 0.0)
-            return current_hours + new_hours
+            current_total = emp_assignments.get("total_hours", 0.0)
+            new_total = new_assignments[emp.pk].get("total_hours", 0.0)
+            return current_total + new_total
 
-        eligible_employees.sort(key=sort_key)
+        eligible_employees.sort(key=get_total_hours)
         assigned_employee = eligible_employees[0]
 
         return self.create_full_week_assignments(
             assigned_employee, daily_shifts, shift_type, new_assignments,
         )
+
+    def _select_employee_by_enhanced_fairness(
+        self,
+        eligible_employees: list[Any],
+        current_assignments: dict,
+        new_assignments: dict,
+        shift_type: str,
+    ) -> Any:
+        """Enhanced fairness-based employee selection that actively minimizes inequality.
+        
+        Uses multiple fairness criteria:
+        1. Primary: Fairness score after proposed assignment  
+        2. Secondary: Load balancing to avoid clustering
+        3. Tertiary: Total workload distribution
+        """
+        if not eligible_employees:
+            raise ValueError("No eligible employees provided")
+            
+        if len(eligible_employees) == 1:
+            return eligible_employees[0]
+        
+        # Calculate enhanced fairness metrics for each employee
+        best_employee = None
+        best_score = float('-inf')
+        
+        # Estimate hours for this assignment (standard week)
+        shift_hours = 45.0  # Standard incidents week or proportional waakdienst
+        if shift_type.lower() == 'waakdienst':
+            shift_hours = 168.0 / 7  # ~24 hours per day average
+        
+        for employee in eligible_employees:
+            # Get current state
+            emp_current = current_assignments.get(
+                employee.pk, 
+                {"incidents": 0.0, "incidents_standby": 0.0, "waakdienst": 0.0, "total_hours": 0.0}
+            )
+            emp_new = new_assignments[employee.pk]
+            
+            # Calculate proposed total after this assignment
+            proposed_current = emp_current[shift_type.lower()] + emp_new[shift_type.lower()]
+            proposed_total = emp_current["total_hours"] + emp_new.get("total_hours", 0.0)
+            
+            # Simulate assignment to calculate fairness impact
+            projected_assignments = {}
+            for emp_id, data in current_assignments.items():
+                if emp_id == employee.pk:
+                    # Add proposed assignment
+                    projected_assignments[emp_id] = dict(data)
+                    projected_assignments[emp_id][shift_type.lower()] = proposed_current + shift_hours
+                    projected_assignments[emp_id]["total_hours"] = proposed_total + shift_hours
+                else:
+                    projected_assignments[emp_id] = dict(data)
+            
+            # Calculate fairness scores for this scenario
+            fairness_scores = self.fairness_calculator.calculate_fairness_score(projected_assignments)
+            
+            # Enhanced scoring with multiple factors
+            emp_fairness = fairness_scores.get(employee.pk, 0.0)
+            
+            # Factor 1: Individual fairness improvement (primary weight: 60%)
+            individual_score = emp_fairness * 0.6
+            
+            # Factor 2: System-wide fairness improvement (secondary weight: 25%)
+            avg_fairness = sum(fairness_scores.values()) / len(fairness_scores)
+            std_deviation = (sum((s - avg_fairness) ** 2 for s in fairness_scores.values()) / len(fairness_scores)) ** 0.5
+            system_score = (100 - std_deviation) * 0.25  # Lower deviation = better
+            
+            # Factor 3: Load balancing bonus (tertiary weight: 15%)
+            total_assigned = sum(data.get("total_hours", 0) for data in current_assignments.values())
+            if total_assigned > 0:
+                current_load_ratio = emp_current.get("total_hours", 0) / total_assigned
+                balance_bonus = (1.0 - min(current_load_ratio, 1.0)) * 15.0  # Bonus for under-loaded
+            else:
+                balance_bonus = 15.0  # Full bonus if no prior assignments
+            
+            # Combined enhanced score
+            enhanced_score = individual_score + system_score + balance_bonus
+            
+            if enhanced_score > best_score:
+                best_score = enhanced_score
+                best_employee = employee
+        
+        return best_employee or eligible_employees[0]
+
+    def _select_employee_by_simple_fairness(
+        self,
+        eligible_employees: list[Any],
+        current_assignments: dict,
+        new_assignments: dict,
+        shift_type: str,
+    ) -> Any:
+        """Simple but effective fairness-based employee selection.
+        
+        Uses total hours to ensure fair distribution across employees.
+        This approach is more reliable than complex projection algorithms.
+        """
+        if not eligible_employees:
+            raise ValueError("No eligible employees provided")
+            
+        if len(eligible_employees) == 1:
+            return eligible_employees[0]
+        
+        # Sort by total workload (least loaded first)
+        def fairness_sort_key(emp):
+            emp_current = current_assignments.get(emp.pk, {})
+            total_current = emp_current.get("total_hours", 0.0)
+            
+            # Add any new assignments made in this run
+            emp_new = new_assignments[emp.pk]
+            total_new = sum(emp_new.values())
+            
+            return total_current + total_new
+
+        eligible_employees.sort(key=fairness_sort_key)
+        return eligible_employees[0]
 
     def generate_schedule(self) -> dict[str, Any]:
         """Generate complete schedule for the period."""
