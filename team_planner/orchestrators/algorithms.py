@@ -507,44 +507,23 @@ class ConstraintChecker:
         )
 
     def get_available_employees(self, shift_type: str) -> list[Any]:
-        """Get employees available for a specific shift type based on skills."""
+        """Get employees available for a specific shift type based on availability flags."""
         query = (
             User.objects.filter(is_active=True, employee_profile__status="active")
             .select_related("employee_profile")
-            .prefetch_related("employee_profile__skills")
         )
 
         # Filter by team if specified
         if self.team_id:
             query = query.filter(teams=self.team_id)
 
-        employees = list(query)
+        # Filter by shift type availability
+        if shift_type in [ShiftType.INCIDENTS, ShiftType.INCIDENTS_STANDBY]:
+            query = query.filter(employee_profile__available_for_incidents=True)
+        elif shift_type == ShiftType.WAAKDIENST:
+            query = query.filter(employee_profile__available_for_waakdienst=True)
 
-        available = []
-        for employee in employees:
-            try:
-                profile = employee.employee_profile  # type: ignore[attr-defined]
-
-                # Get required skill name based on shift type
-                required_skill = None
-                if shift_type in [ShiftType.INCIDENTS, ShiftType.INCIDENTS_STANDBY]:
-                    required_skill = "incidents"
-                elif shift_type == ShiftType.WAAKDIENST:
-                    required_skill = "waakdienst"
-
-                # Check if employee has the required skill
-                if required_skill:
-                    has_skill = profile.skills.filter(
-                        name=required_skill, is_active=True,
-                    ).exists()
-
-                    if has_skill:
-                        available.append(employee)
-
-            except EmployeeProfile.DoesNotExist:
-                continue
-
-        return available
+        return list(query)
 
     def check_leave_conflicts(
         self, employee: Any, start_date: datetime, end_date: datetime,
