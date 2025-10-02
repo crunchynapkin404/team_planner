@@ -31,6 +31,8 @@ import {
   Tooltip,
   Skeleton,
   Fab,
+  Autocomplete,
+  Checkbox,
 } from '@mui/material';
 import {
   ChevronLeft,
@@ -79,6 +81,8 @@ const TimelinePage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [shiftTypeFilter, setShiftTypeFilter] = useState<string[]>([]);
   const [showMyScheduleOnly, setShowMyScheduleOnly] = useState(false);
+  const [teamFilter, setTeamFilter] = useState<string[]>([]);
+  const [teams, setTeams] = useState<{ id: number; name: string }[]>([]);
 
   // Keyboard navigation state
   const [focusedCell, setFocusedCell] = useState<{ row: number; col: number } | null>(null);
@@ -306,6 +310,20 @@ const TimelinePage: React.FC = () => {
     return events;
   };
 
+  // Fetch teams from API
+  const fetchTeams = async () => {
+    try {
+      const response = await apiClient.get('/api/teams/');
+      const teamsData = response as { results: any[] };
+      setTeams(teamsData.results.map((team: any) => ({
+        id: team.id,
+        name: team.name
+      })));
+    } catch (err) {
+      console.error('Error loading teams:', err);
+    }
+  };
+
   // Fetch shifts and leave requests from API
   const fetchData = async () => {
     setLoading(true);
@@ -502,6 +520,16 @@ const TimelinePage: React.FC = () => {
         ...td,
         shifts: td.shifts.filter(shift => 
           shiftTypeFilter.includes(shift.extendedProps?.shiftType || '')
+        )
+      })).filter(td => td.shifts.length > 0 || td.leaves.length > 0);
+    }
+    
+    // Apply team filter
+    if (teamFilter.length > 0) {
+      filtered = filtered.map(td => ({
+        ...td,
+        shifts: td.shifts.filter(shift => 
+          shift.extendedProps?.teamId && teamFilter.includes(shift.extendedProps.teamId)
         )
       })).filter(td => td.shifts.length > 0 || td.leaves.length > 0);
     }
@@ -735,6 +763,7 @@ const TimelinePage: React.FC = () => {
   // Load data on component mount
   useEffect(() => {
     fetchData();
+    fetchTeams();
     // Set current date to today when component first loads
     const today = new Date();
     setCurrentDate(today);
@@ -996,8 +1025,34 @@ const TimelinePage: React.FC = () => {
             />
           </Box>
 
+          {/* Team Filter */}
+          <Autocomplete
+            multiple
+            size="small"
+            options={teams}
+            getOptionLabel={(option) => option.name}
+            value={teams.filter(team => teamFilter.includes(team.id.toString()))}
+            onChange={(_, newValue) => {
+              setTeamFilter(newValue.map(team => team.id.toString()));
+            }}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                placeholder={teamFilter.length === 0 ? "Filter by team..." : ""}
+                size="small"
+              />
+            )}
+            renderOption={(props, option, { selected }) => (
+              <li {...props}>
+                <Checkbox checked={selected} size="small" />
+                {option.name}
+              </li>
+            )}
+            sx={{ minWidth: 200 }}
+          />
+
           {/* Clear All Filters */}
-          {(searchQuery || statusFilter.length > 0 || shiftTypeFilter.length > 0 || showMyScheduleOnly) && (
+          {(searchQuery || statusFilter.length > 0 || shiftTypeFilter.length > 0 || showMyScheduleOnly || teamFilter.length > 0) && (
             <Button
               size="small"
               variant="text"
@@ -1007,6 +1062,7 @@ const TimelinePage: React.FC = () => {
                 setStatusFilter([]);
                 setShiftTypeFilter([]);
                 setShowMyScheduleOnly(false);
+                setTeamFilter([]);
               }}
             >
               Clear All
@@ -1432,7 +1488,7 @@ const TimelinePage: React.FC = () => {
                 flexWrap: 'wrap',
                 justifyContent: 'center'
               }}>
-                {(searchQuery || statusFilter.length > 0 || shiftTypeFilter.length > 0 || showMyScheduleOnly) && (
+                {(searchQuery || statusFilter.length > 0 || shiftTypeFilter.length > 0 || showMyScheduleOnly || teamFilter.length > 0) && (
                   <Button
                     variant="contained"
                     color="primary"
@@ -1441,6 +1497,7 @@ const TimelinePage: React.FC = () => {
                       setStatusFilter([]);
                       setShiftTypeFilter([]);
                       setShowMyScheduleOnly(false);
+                      setTeamFilter([]);
                     }}
                   >
                     Clear All Filters
