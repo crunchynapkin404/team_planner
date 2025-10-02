@@ -486,3 +486,80 @@ def _can_respond_to_swap(user, swap_request):
             return True
 
     return False
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_shift_conflicts(request):
+    """
+    API endpoint to detect scheduling conflicts.
+    
+    Query Parameters:
+        start_date: Start date for conflict detection (ISO format)
+        end_date: End date for conflict detection (ISO format)
+        employee_id: Optional - filter for specific employee
+    
+    Returns:
+        {
+            "conflicts": {
+                "shift_id": [
+                    {
+                        "type": "double_booking",
+                        "severity": "high",
+                        "message": "Overlaps with shift #123",
+                        "details": {...},
+                        "suggestion": "..."
+                    }
+                ]
+            },
+            "summary": {
+                "total_conflicts": 10,
+                "affected_shifts": 5,
+                "by_type": {...},
+                "by_severity": {...}
+            }
+        }
+    """
+    from team_planner.shifts.services.conflict_detector import ConflictDetector
+    
+    # Get query parameters
+    start_date_str = request.query_params.get('start_date')
+    end_date_str = request.query_params.get('end_date')
+    employee_id = request.query_params.get('employee_id')
+    
+    # Validate required parameters
+    if not start_date_str or not end_date_str:
+        return JsonResponse({
+            'error': 'start_date and end_date are required'
+        }, status=400)
+    
+    # Parse dates
+    try:
+        start_date = datetime.fromisoformat(start_date_str.replace('Z', '+00:00'))
+        end_date = datetime.fromisoformat(end_date_str.replace('Z', '+00:00'))
+    except ValueError as e:
+        return JsonResponse({
+            'error': f'Invalid date format: {str(e)}'
+        }, status=400)
+    
+    # Make dates timezone-aware if needed
+    if timezone.is_naive(start_date):
+        start_date = timezone.make_aware(start_date)
+    if timezone.is_naive(end_date):
+        end_date = timezone.make_aware(end_date)
+    
+    # Detect conflicts
+    detector = ConflictDetector()
+    conflicts = detector.detect_all_conflicts(
+        start_date=start_date,
+        end_date=end_date,
+        employee_id=int(employee_id) if employee_id else None
+    )
+    
+    # Get summary
+    summary = detector.get_conflict_summary(conflicts)
+    
+    return JsonResponse({
+        'conflicts': conflicts,
+        'summary': summary
+    })
