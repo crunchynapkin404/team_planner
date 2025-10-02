@@ -25,10 +25,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  List,
-  ListItem,
-  ListItemText,
-  Divider,
   TextField,
   InputAdornment,
   Tooltip,
@@ -41,6 +37,11 @@ import {
   Search,
   Clear,
   FilterList,
+  Edit,
+  Delete,
+  AccessTime,
+  Person,
+  CalendarMonth,
 } from '@mui/icons-material';
 import { apiClient } from '../services/apiClient';
 import { API_CONFIG } from '../config/api';
@@ -1187,87 +1188,190 @@ const TimelinePage: React.FC = () => {
         </Card>
       )}
 
-      {/* Shift Details Dialog */}
+      {/* Shift Details Dialog - Enhanced */}
       <Dialog 
         open={dialogOpen} 
         onClose={handleCloseDialog}
         maxWidth="md"
         fullWidth
       >
-        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography variant="h6">
-            Shift Details
-          </Typography>
+        <DialogTitle sx={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'flex-start',
+          pb: 1
+        }}>
+          <Box>
+            <Typography variant="h6">
+              {selectedShifts.length > 1 ? `${selectedShifts.length} Shifts` : 'Shift Details'}
+            </Typography>
+            {selectedShifts.length > 0 && (
+              <Typography variant="body2" color="text.secondary">
+                {formatShiftType(selectedShifts[0].extendedProps?.shiftType || 'Unknown')}
+              </Typography>
+            )}
+          </Box>
           <IconButton onClick={handleCloseDialog} size="small">
             <Close />
           </IconButton>
         </DialogTitle>
-        <DialogContent>
+        <DialogContent dividers>
           {selectedShifts.length > 0 && (
-            <>
-              <Typography variant="subtitle1" gutterBottom>
-                {formatShiftType(selectedShifts[0].extendedProps?.shiftType || 'Unknown')} 
-                {selectedShifts.length > 1 && ` (${selectedShifts.length} shifts)`}
-              </Typography>
-              <List>
-                {selectedShifts.map((shift, index) => (
-                  <React.Fragment key={shift.id || index}>
-                    <ListItem sx={{ px: 0 }}>
-                      <ListItemText
-                        primary={
-                          <Box>
-                            <Typography variant="body1" fontWeight="bold">
-                              {shift.title}
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              Engineer: {shift.extendedProps?.engineerName || 'Unassigned'}
-                            </Typography>
-                          </Box>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {selectedShifts.map((shift, index) => {
+                const startDate = new Date(shift.start);
+                const endDate = new Date(shift.end);
+                const durationHours = Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60) * 10) / 10;
+                const status = shift.extendedProps?.status || 'scheduled';
+                
+                return (
+                  <Paper 
+                    key={shift.id || index} 
+                    elevation={0} 
+                    sx={{ 
+                      border: 1, 
+                      borderColor: 'divider',
+                      p: 2,
+                      backgroundColor: index === 0 ? 'background.default' : 'background.paper'
+                    }}
+                  >
+                    {/* Header with Status Badge */}
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                      <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                        {shift.title}
+                      </Typography>
+                      <Chip
+                        label={status.charAt(0).toUpperCase() + status.slice(1)}
+                        size="small"
+                        color={
+                          status === 'confirmed' ? 'success' : 
+                          status === 'cancelled' ? 'error' : 
+                          'primary'
                         }
-                        secondary={
-                          <Box sx={{ mt: 1 }}>
-                            <Typography variant="body2">
-                              <strong>Start:</strong> {new Date(shift.start).toLocaleString('en-US', {
-                                weekday: 'short',
-                                year: 'numeric',
-                                month: 'short',
-                                day: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
-                            </Typography>
-                            <Typography variant="body2">
-                              <strong>End:</strong> {new Date(shift.end).toLocaleString('en-US', {
-                                weekday: 'short',
-                                year: 'numeric',
-                                month: 'short',
-                                day: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
-                            </Typography>
-                            <Typography variant="body2">
-                              <strong>Duration:</strong> {
-                                Math.round((new Date(shift.end).getTime() - new Date(shift.start).getTime()) / (1000 * 60 * 60 * 100)) / 100
-                              } hours
-                            </Typography>
-                            {shift.extendedProps?.description && (
-                              <Typography variant="body2">
-                                <strong>Description:</strong> {shift.extendedProps.description}
-                              </Typography>
-                            )}
-                          </Box>
-                        }
+                        sx={{ fontWeight: 500 }}
                       />
-                    </ListItem>
-                    {index < selectedShifts.length - 1 && <Divider />}
-                  </React.Fragment>
-                ))}
-              </List>
-            </>
+                    </Box>
+
+                    {/* Engineer Info */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                      <Person fontSize="small" color="action" />
+                      <Typography variant="body2" color="text.secondary">
+                        <strong>Engineer:</strong> {shift.extendedProps?.engineerName || 'Unassigned'}
+                      </Typography>
+                    </Box>
+
+                    {/* Duration - Prominent Display */}
+                    <Box sx={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: 1, 
+                      mb: 2,
+                      p: 1.5,
+                      backgroundColor: 'action.hover',
+                      borderRadius: 1
+                    }}>
+                      <AccessTime fontSize="small" color="primary" />
+                      <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                        Duration: {durationHours} hours
+                      </Typography>
+                    </Box>
+
+                    {/* Date/Time Details */}
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 2 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                        <CalendarMonth fontSize="small" color="action" />
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">
+                            <strong>Start:</strong> {startDate.toLocaleString('en-US', {
+                              weekday: 'short',
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            <strong>End:</strong> {endDate.toLocaleString('en-US', {
+                              weekday: 'short',
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </Box>
+
+                    {/* Description/Notes */}
+                    {shift.extendedProps?.description && (
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600, mb: 0.5 }}>
+                          Notes:
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {shift.extendedProps.description}
+                        </Typography>
+                      </Box>
+                    )}
+
+                    {/* Recurring Pattern Info */}
+                    {shift.extendedProps?.isRecurring && (
+                      <Box sx={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: 1,
+                        p: 1,
+                        backgroundColor: 'info.lighter',
+                        borderRadius: 1,
+                        mb: 2
+                      }}>
+                        <Chip label="Recurring" size="small" color="info" variant="outlined" />
+                        <Typography variant="caption" color="text.secondary">
+                          Part of recurring pattern #{shift.extendedProps.recurringPatternId}
+                        </Typography>
+                      </Box>
+                    )}
+
+                    {/* Quick Actions */}
+                    <Box sx={{ display: 'flex', gap: 1, mt: 2, pt: 2, borderTop: 1, borderColor: 'divider' }}>
+                      <Tooltip title="Edit shift details">
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<Edit />}
+                          onClick={() => {
+                            // TODO: Navigate to edit page or open edit dialog
+                            console.log('Edit shift:', shift.id);
+                          }}
+                        >
+                          Edit
+                        </Button>
+                      </Tooltip>
+                      <Tooltip title="Delete this shift">
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="error"
+                          startIcon={<Delete />}
+                          onClick={() => {
+                            // TODO: Confirm and delete shift
+                            console.log('Delete shift:', shift.id);
+                          }}
+                        >
+                          Delete
+                        </Button>
+                      </Tooltip>
+                    </Box>
+                  </Paper>
+                );
+              })}
+            </Box>
           )}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={handleCloseDialog} variant="contained">
             Close
           </Button>
