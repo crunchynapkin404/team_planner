@@ -123,6 +123,10 @@ const TimelinePage: React.FC = () => {
   const [availability, setAvailability] = useState<Record<string, Record<string, string>>>({});
   const [showAvailability, setShowAvailability] = useState(false);
 
+  // Drag-and-drop state
+  const [isDragging, setIsDragging] = useState(false);
+  const [draggedShift, setDraggedShift] = useState<CalendarEvent | null>(null);
+
   // Fetch recurring leave patterns and generate calendar events
   const fetchRecurringLeavePatterns = async (): Promise<CalendarEvent[]> => {
     console.log('🔍 Starting fetchRecurringLeavePatterns...');
@@ -1110,8 +1114,85 @@ const TimelinePage: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [keyboardNavEnabled, focusedCell, dialogOpen, dateRange, getFilteredTimelineData]);
 
+  // Drag-and-drop handler
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    setIsDragging(false);
+    setDraggedShift(null);
+    
+    if (!over) return;
+    
+    const shift = active.data.current as CalendarEvent;
+    const { date, engineerId } = over.data.current as { date: Date; engineerId: string };
+    
+    // Don't do anything if dropped on same location
+    const originalDate = new Date(shift.start);
+    if (
+      originalDate.toDateString() === date.toDateString() &&
+      shift.extendedProps?.engineerId === engineerId
+    ) {
+      return;
+    }
+    
+    // Check for conflicts
+    const shiftConflicts = getShiftConflicts(shift.id);
+    if (showConflicts && shiftConflicts.length > 0) {
+      // TODO: Show validation error
+      console.warn('Cannot move shift: conflicts detected', shiftConflicts);
+      return;
+    }
+    
+    // Calculate new start and end times
+    const shiftDuration = new Date(shift.end).getTime() - new Date(shift.start).getTime();
+    const newStartTime = new Date(date);
+    newStartTime.setHours(new Date(shift.start).getHours());
+    newStartTime.setMinutes(new Date(shift.start).getMinutes());
+    const newEndTime = new Date(newStartTime.getTime() + shiftDuration);
+    
+    // Optimistic update
+    const updatedAllShifts = allShiftsData.map(s =>
+      s.id === shift.id
+        ? {
+            ...s,
+            start: newStartTime.toISOString(),
+            end: newEndTime.toISOString(),
+            extendedProps: {
+              ...(s.extendedProps || {}),
+              engineerId,
+              engineerName: s.extendedProps?.engineerName || '' // Ensure engineerName is a string
+            }
+          } as CalendarEvent
+        : s
+    );
+    setAllShiftsData(updatedAllShifts);
+    processTimelineData(updatedAllShifts, allLeavesData, currentDate);
+    
+    // API call
+    try {
+      await apiClient.patch(`/api/shifts/${shift.id.replace('shift-', '')}/`, {
+        start_time: newStartTime.toISOString(),
+        end_time: newEndTime.toISOString(),
+        assigned_employee: parseInt(engineerId)
+      });
+      
+      // TODO: Show success message
+      console.log('Shift rescheduled successfully');
+    } catch (error) {
+      // Rollback on error
+      setAllShiftsData(allShiftsData);
+      processTimelineData(allShiftsData, allLeavesData, currentDate);
+      
+      // TODO: Show error message
+      console.error('Failed to reschedule shift:', error);
+    }
+  };
+
   return (
-    <Box sx={{ p: 3 }}>
+    <DndContext 
+      onDragEnd={handleDragEnd}
+      onDragStart={() => setIsDragging(true)}
+    >
+      <Box sx={{ p: 3 }}>
       {/* Header */}
       <Box sx={{ mb: 3 }}>
         <Typography variant="h4" gutterBottom>
@@ -1528,28 +1609,43 @@ const TimelinePage: React.FC = () => {
                         const availStatus = showAvailability ? getAvailabilityStatus(engineerData.engineerId, date) : 'unknown';
                         const availColor = showAvailability ? getAvailabilityColor(availStatus) : 'transparent';
                         
-                        return (
-                          <TableCell 
-                            key={date.toISOString()}
-                            sx={{ 
-                              p: 0.5,
-                              verticalAlign: 'top',
-                              position: 'relative',
-                              backgroundColor: isToday 
-                                ? (hasEvents ? '#e3f2fd' : '#f3f9ff')
-                                : (hasEvents ? '#fafafa' : 'transparent'),
-                              borderLeft: isToday ? '2px solid #1976d2' : 'none',
-                              borderRight: isToday ? '2px solid #1976d2' : 'none',
-                              // Keyboard focus indicator
-                              ...(isFocused && {
-                                outline: '3px solid #1976d2',
-                                outlineOffset: '-3px',
-                                backgroundColor: '#bbdefb',
+                        // Droppable Cell Wrapper
+                        const DroppableCell = () => {
+                          const { setNodeRef, isOver } = useDroppable({
+                            id: `${engineerData.engineerId}-${date.toISOString()}`,
+                            data: { date, engineerId: engineerData.engineerId }
+                          });
+                          
+                          return (
+                            <TableCell 
+                              ref={setNodeRef}
+                              key={date.toISOString()}
+                              sx={{ 
+                                p: 0.5,
+                                verticalAlign: 'top',
                                 position: 'relative',
-                                zIndex: 10
-                              })
-                            }}
-                          >
+                                backgroundColor: isOver 
+                                  ? 'rgba(25, 118, 210, 0.12)' // Drop zone highlight
+                                  : isToday 
+                                    ? (hasEvents ? '#e3f2fd' : '#f3f9ff')
+                                    : (hasEvents ? '#fafafa' : 'transparent'),
+                                borderLeft: isToday ? '2px solid #1976d2' : 'none',
+                                borderRight: isToday ? '2px solid #1976d2' : 'none',
+                                // Drop zone indicator
+                                ...(isOver && {
+                                  border: '2px dashed #1976d2',
+                                  backgroundColor: 'rgba(25, 118, 210, 0.08)'
+                                }),
+                                // Keyboard focus indicator
+                                ...(isFocused && {
+                                  outline: '3px solid #1976d2',
+                                  outlineOffset: '-3px',
+                                  backgroundColor: '#bbdefb',
+                                  position: 'relative',
+                                  zIndex: 10
+                                })
+                              }}
+                            >
                             {/* Availability overlay */}
                             {showAvailability && availStatus !== 'unknown' && (
                               <Box
@@ -1589,10 +1685,79 @@ const TimelinePage: React.FC = () => {
                                   ? `⚠️ ${allShiftConflicts.length} conflict${allShiftConflicts.length > 1 ? 's' : ''}:\n${allShiftConflicts.map(c => `• ${c.message}`).join('\n')}`
                                   : '';
                                 
+                                // Draggable Chip Component (for single shift only, not groups)
+                                const DraggableChipWrapper = ({ shift }: { shift: CalendarEvent }) => {
+                                  const { attributes, listeners, setNodeRef, transform, isDragging: isThisDragging } = useDraggable({
+                                    id: shift.id,
+                                    data: shift
+                                  });
+                                  
+                                  const style = transform ? {
+                                    transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+                                    opacity: isThisDragging ? 0.5 : 1,
+                                  } : undefined;
+                                  
+                                  return (
+                                    <Tooltip 
+                                      title={conflictTooltip || label}
+                                      arrow
+                                    >
+                                      <span ref={setNodeRef} style={style} {...attributes} {...listeners}>
+                                        <Chip
+                                          label={
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                              {label}
+                                              {hasConflicts && getConflictIcon(highestSeverity)}
+                                            </Box>
+                                          }
+                                          size="small"
+                                          clickable
+                                          onClick={() => handleChipClick(shifts)}
+                                          sx={{
+                                            backgroundColor: getShiftColor(shiftType),
+                                            color: 'white',
+                                            fontSize: '0.7rem',
+                                            height: 'auto',
+                                            cursor: isThisDragging ? 'grabbing' : 'grab',
+                                            position: 'relative',
+                                            // Add conflict border/outline
+                                            ...(hasConflicts && {
+                                              outline: `2px solid ${
+                                                highestSeverity === 'high' ? '#d32f2f' :
+                                                highestSeverity === 'medium' ? '#ed6c02' :
+                                                '#0288d1'
+                                              }`,
+                                              outlineOffset: '1px',
+                                            }),
+                                            '&:hover': {
+                                              opacity: 0.8,
+                                              transform: 'scale(1.02)',
+                                            },
+                                            '& .MuiChip-label': {
+                                              whiteSpace: 'normal',
+                                              lineHeight: 1.2,
+                                              padding: '2px 4px',
+                                              textAlign: 'center',
+                                              display: 'flex',
+                                              alignItems: 'center'
+                                            }
+                                          }}
+                                        />
+                                      </span>
+                                    </Tooltip>
+                                  );
+                                };
+                                
+                                // Only make individual shifts draggable, not grouped ones
+                                if (count === 1) {
+                                  return <DraggableChipWrapper key={shiftType} shift={shifts[0]} />;
+                                }
+                                
+                                // For grouped shifts (count > 1), render static chip
                                 return (
                                   <Tooltip 
                                     key={shiftType}
-                                    title={conflictTooltip || label}
+                                    title={conflictTooltip || `Multiple shifts: ${label}`}
                                     arrow
                                   >
                                     <Chip
@@ -1688,7 +1853,10 @@ const TimelinePage: React.FC = () => {
                               })}
                             </Box>
                           </TableCell>
-                        );
+                          );
+                        };
+                        
+                        return <DroppableCell />;
                       })}
                     </TableRow>
                   ))}
@@ -2456,6 +2624,7 @@ const TimelinePage: React.FC = () => {
         <Print />
       </Fab>
     </Box>
+    </DndContext>
   );
 };
 
