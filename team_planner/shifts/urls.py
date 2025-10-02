@@ -67,4 +67,5 @@ urlpatterns = [
         "api/employee-shifts/", api.get_employee_shifts_api, name="employee_shifts_api",
     ),
     path("api/conflicts/", views.get_shift_conflicts, name="shift_conflicts_api"),
+    path("api/availability/", views.get_employee_availability, name="employee_availability_api"),
 ]

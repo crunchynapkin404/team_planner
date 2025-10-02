@@ -563,3 +563,81 @@ def get_shift_conflicts(request):
         'conflicts': conflicts,
         'summary': summary
     })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_employee_availability(request):
+    """
+    API endpoint to get employee availability matrix.
+    
+    Query Parameters:
+        start_date: Start date (ISO format)
+        end_date: End date (ISO format)
+        employee_ids: Optional comma-separated list of employee IDs
+    
+    Returns:
+        {
+            "availability": {
+                "employee_id": {
+                    "2025-01-15": "available",
+                    "2025-01-16": "partial",
+                    "2025-01-17": "unavailable"
+                }
+            },
+            "summary": {
+                "total_employee_days": 100,
+                "available_count": 70,
+                "partial_count": 20,
+                "unavailable_count": 10,
+                "availability_percentage": 70.0
+            }
+        }
+    """
+    from team_planner.shifts.services.availability import AvailabilityService
+    
+    # Get query parameters
+    start_date_str = request.query_params.get('start_date')
+    end_date_str = request.query_params.get('end_date')
+    employee_ids_str = request.query_params.get('employee_ids')
+    
+    # Validate required parameters
+    if not start_date_str or not end_date_str:
+        return JsonResponse({
+            'error': 'start_date and end_date are required'
+        }, status=400)
+    
+    # Parse dates
+    try:
+        start_date = datetime.fromisoformat(start_date_str.replace('Z', '+00:00'))
+        end_date = datetime.fromisoformat(end_date_str.replace('Z', '+00:00'))
+    except ValueError as e:
+        return JsonResponse({
+            'error': f'Invalid date format: {str(e)}'
+        }, status=400)
+    
+    # Parse employee IDs if provided
+    employee_ids = None
+    if employee_ids_str:
+        try:
+            employee_ids = [int(id.strip()) for id in employee_ids_str.split(',')]
+        except ValueError:
+            return JsonResponse({
+                'error': 'Invalid employee_ids format'
+            }, status=400)
+    
+    # Get availability
+    service = AvailabilityService()
+    availability = service.get_availability_matrix(
+        start_date=start_date,
+        end_date=end_date,
+        employee_ids=employee_ids
+    )
+    
+    # Get summary
+    summary = service.get_availability_summary(availability)
+    
+    return JsonResponse({
+        'availability': availability,
+        'summary': summary
+    })
