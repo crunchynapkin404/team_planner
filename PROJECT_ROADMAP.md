@@ -276,8 +276,8 @@ The backend permission system was already fully implemented and tested. All crit
   - No breaking changes to desktop calendar
   - 622 lines of new code
 
-### Week 10.5: Timeline/Schedule View Enhancement 🚧 In Progress
-**Status:** In Progress (70% Complete - 7/10 Quick Wins Done)  
+### Week 10.5: Timeline/Schedule View Enhancement ⚠️ CRITICAL
+**Status:** ✅ In Progress (80% Complete - 8/10 Quick Wins Done)  
 **Started:** October 2, 2025  
 **Priority:** HIGH - Main user interface for viewing schedules
 
@@ -288,7 +288,7 @@ The backend permission system was already fully implemented and tested. All crit
 - ✅ 10 quick wins identified (<1 day each)
 - ✅ Phased implementation roadmap (3 phases, 7 weeks)
 
-**Phase 1: Quick Wins & Critical UX (1 week) - 70% COMPLETE**
+**Phase 1: Quick Wins & Critical UX (1 week) - 80% COMPLETE**
 
 Priority 1 - Quick Wins (Days 1-2): ✅ COMPLETE
 - ✅ **Employee Search/Filter** (2 hours) - Commit 79ed9d2
@@ -345,11 +345,15 @@ Priority 3 - UX Polish (Days 3-4): 🚧 IN PROGRESS
   - Keyboard shortcuts help panel
   - Auto-enable on first arrow key press
   
-- [ ] **Print-Friendly View** (2 hours)
-  - CSS media queries for print
-  - Hide interactive elements
-  - Optimize for A4/Letter
-  - Page breaks at logical points
+- ✅ **Print-Friendly View** (2 hours) - Commit 3369d3a
+  - Comprehensive print.css with @media print rules (180 lines)
+  - A4 landscape page setup with optimized margins
+  - Hides all interactive elements (buttons, inputs, dialogs, filters)
+  - Preserves shift chip colors (print-color-adjust: exact)
+  - Optimized typography (7-10pt fonts for print)
+  - Floating print button (Fab component, bottom-right)
+  - One-click printing with window.print()
+  - Professional printed schedules for meetings and HR
   
 - [ ] **Error Retry Button** (1 hour)
   - Allow retry on fetch errors
