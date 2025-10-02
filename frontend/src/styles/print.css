@@ -1,0 +1,230 @@
+/* Print-Friendly Styles for Timeline View */
+
+@media print {
+  /* Page setup */
+  @page {
+    size: A4 landscape;
+    margin: 1cm;
+  }
+
+  /* Hide non-essential elements */
+  header,
+  nav,
+  .MuiAppBar-root,
+  .MuiDrawer-root,
+  button,
+  .MuiButton-root,
+  .MuiIconButton-root,
+  .MuiChip-clickable,
+  input,
+  .MuiTextField-root,
+  .print-hide,
+  [role="button"] {
+    display: none !important;
+  }
+
+  /* Show only main content */
+  body {
+    background: white !important;
+    color: black !important;
+    font-size: 10pt;
+    line-height: 1.3;
+  }
+
+  /* Reset Material-UI styles for print */
+  * {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+
+  /* Main container */
+  .MuiBox-root {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Cards */
+  .MuiCard-root {
+    border: 1px solid #ddd !important;
+    margin-bottom: 1cm !important;
+    page-break-inside: avoid;
+    box-shadow: none !important;
+  }
+
+  .MuiCardContent-root {
+    padding: 0.5cm !important;
+  }
+
+  /* Header - show title and date range */
+  .print-header {
+    display: block !important;
+    text-align: center;
+    margin-bottom: 0.5cm;
+    border-bottom: 2px solid #333;
+    padding-bottom: 0.3cm;
+  }
+
+  /* Table styles */
+  .MuiTableContainer-root {
+    overflow: visible !important;
+    box-shadow: none !important;
+  }
+
+  .MuiTable-root {
+    border-collapse: collapse !important;
+    width: 100% !important;
+    font-size: 8pt !important;
+  }
+
+  .MuiTableHead-root {
+    background-color: #f0f0f0 !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .MuiTableCell-root {
+    border: 1px solid #999 !important;
+    padding: 0.2cm !important;
+    font-size: 8pt !important;
+    vertical-align: top !important;
+    page-break-inside: avoid;
+  }
+
+  .MuiTableCell-head {
+    font-weight: bold !important;
+    background-color: #e0e0e0 !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+    text-align: center !important;
+  }
+
+  /* Engineer name column - sticky on print */
+  .MuiTableCell-root:first-child {
+    background-color: #f5f5f5 !important;
+    font-weight: bold !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* Shift chips - preserve colors */
+  .MuiChip-root {
+    display: inline-block !important;
+    padding: 2px 6px !important;
+    margin: 2px !important;
+    border: 1px solid #666 !important;
+    font-size: 7pt !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+    opacity: 1 !important;
+  }
+
+  .MuiChip-label {
+    padding: 0 !important;
+    font-size: 7pt !important;
+  }
+
+  /* Today column highlight - lighter for print */
+  .today-column {
+    background-color: #f0f8ff !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* Legend - show on first page */
+  .print-legend {
+    display: block !important;
+    margin-top: 0.5cm;
+    padding: 0.3cm;
+    border: 1px solid #999;
+    background-color: #fafafa !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+    page-break-inside: avoid;
+    font-size: 8pt;
+  }
+
+  .print-legend h6 {
+    margin: 0 0 0.2cm 0;
+    font-size: 10pt;
+  }
+
+  /* Hide dialogs and overlays */
+  .MuiDialog-root,
+  .MuiBackdrop-root,
+  .MuiModal-root {
+    display: none !important;
+  }
+
+  /* Page breaks */
+  .page-break-before {
+    page-break-before: always;
+  }
+
+  .page-break-after {
+    page-break-after: always;
+  }
+
+  .page-break-avoid {
+    page-break-inside: avoid;
+  }
+
+  /* Print-specific header on each page */
+  thead {
+    display: table-header-group;
+  }
+
+  tfoot {
+    display: table-footer-group;
+  }
+
+  /* Links */
+  a {
+    text-decoration: none;
+    color: black !important;
+  }
+
+  /* Typography adjustments */
+  h1, h2, h3, h4, h5, h6 {
+    page-break-after: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Ensure skeleton doesn't show on print */
+  .MuiSkeleton-root {
+    display: none !important;
+  }
+
+  /* Filter controls - hide completely */
+  .filter-controls,
+  .MuiPaper-root:has(.MuiTextField-root) {
+    display: none !important;
+  }
+
+  /* Keyboard shortcuts - hide on print */
+  .keyboard-shortcuts {
+    display: none !important;
+  }
+
+  /* Stats - show in compact format */
+  .print-stats {
+    display: block !important;
+    text-align: right;
+    margin-bottom: 0.3cm;
+    font-size: 9pt;
+    color: #666;
+  }
+}
+
+/* Print button - always visible */
+.print-button {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1000;
+}
+
+@media print {
+  .print-button {
+    display: none !important;
+  }
+}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import '../styles/print.css';
 import {
   Box,
   Typography,
@@ -28,6 +29,7 @@ import {
   InputAdornment,
   Tooltip,
   Skeleton,
+  Fab,
 } from '@mui/material';
 import {
   ChevronLeft,
@@ -45,6 +47,7 @@ import {
   EventBusy,
   PlaylistAdd,
   Settings,
+  Print,
 } from '@mui/icons-material';
 import { apiClient } from '../services/apiClient';
 import { API_CONFIG } from '../config/api';
@@ -908,7 +911,7 @@ const TimelinePage: React.FC = () => {
       </Paper>
 
       {/* Filters */}
-      <Paper sx={{ p: 2, mb: 3 }}>
+      <Paper className="filter-controls print-hide" sx={{ p: 2, mb: 3 }}>
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
           {/* Search Box */}
           <TextField
@@ -1485,7 +1488,7 @@ const TimelinePage: React.FC = () => {
 
       {/* Keyboard Shortcuts */}
       {timelineData.length > 0 && (
-        <Card sx={{ mt: 2 }}>
+        <Card className="keyboard-shortcuts print-hide" sx={{ mt: 2 }}>
           <CardContent>
             <Typography variant="h6" gutterBottom>
               Keyboard Shortcuts
@@ -1751,6 +1754,22 @@ const TimelinePage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Print Button - Fixed bottom-right */}
+      <Fab
+        color="primary"
+        className="print-button"
+        onClick={() => window.print()}
+        sx={{
+          position: 'fixed',
+          bottom: 20,
+          right: 20,
+          zIndex: 1000
+        }}
+        aria-label="Print schedule"
+      >
+        <Print />
+      </Fab>
     </Box>
   );
 };
