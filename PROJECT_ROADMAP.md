@@ -276,8 +276,8 @@ The backend permission system was already fully implemented and tested. All crit
   - No breaking changes to desktop calendar
   - 622 lines of new code
 
-### Week 10.5: Timeline/Schedule View Enhancement ⚠️ CRITICAL
-**Status:** ✅ In Progress (90% Complete - 9/10 Quick Wins Done)  
+### Week 10.5: Timeline/Schedule View Enhancement ✅ COMPLETE
+**Status:** ✅ Complete (100% - 10/10 Quick Wins Done)  
 **Started:** October 2, 2025  
 **Priority:** HIGH - Main user interface for viewing schedules
 
@@ -288,7 +288,7 @@ The backend permission system was already fully implemented and tested. All crit
 - ✅ 10 quick wins identified (<1 day each)
 - ✅ Phased implementation roadmap (3 phases, 7 weeks)
 
-**Phase 1: Quick Wins & Critical UX (1 week) - 90% COMPLETE**
+**Phase 1: Quick Wins & Critical UX (1 week) - ✅ 100% COMPLETE**
 
 Priority 1 - Quick Wins (Days 1-2): ✅ COMPLETE
 - ✅ **Employee Search/Filter** (2 hours) - Commit 79ed9d2
@@ -363,18 +363,15 @@ Priority 3 - UX Polish (Days 3-4): 🚧 IN PROGRESS
   - Clears error state and calls fetchData()
   - Professional error messaging with title
 
-Priority 4 - Critical Features (Days 4-5):
-- [ ] **Team/Department Filter** (3-4 hours)
-  - Dropdown to filter by team
-  - Multi-select support
-  - Backend API parameter support
-  - Update URL with filter state
-  
-- [ ] **Shift Type Filter** (2-3 hours)
-  - Multi-select shift type chips
-  - Filter by incident, project, standby, etc.
-  - Visual active state
-  - Combine with other filters
+Priority 4 - Critical Features (Days 4-5): ✅ COMPLETE
+- ✅ **Team/Department Filter** (3-4 hours) - Commit adf2eb9
+  - Multi-select Autocomplete for team filtering
+  - Checkbox selection with Material-UI components
+  - Fetches teams from /api/teams/ endpoint
+  - Filters shifts by teamId in extendedProps
+  - Integrated with Clear All button
+  - Works seamlessly with other filters
+  - Minimum 200px width for proper display
 
 **Phase 2: Advanced Filtering & Conflict Detection (1 week) - PENDING**
 
