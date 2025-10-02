@@ -86,7 +86,7 @@ class ShiftSearchForm(forms.Form):
         help_text=_("Filter shifts ending before this date"),
     )
     shift_type = forms.ChoiceField(
-        choices=[("", "All Types"), *list(Shift.objects.values_list("template__shift_type", "template__shift_type").distinct())],
+        choices=[("", "All Types")],  # Populated dynamically in __init__
         required=False,
         help_text=_("Filter by shift type"),
     )
@@ -96,6 +96,17 @@ class ShiftSearchForm(forms.Form):
         empty_label="All Employees",
         help_text=_("Filter by assigned employee"),
     )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Populate shift types dynamically to avoid database queries at import time
+        try:
+            shift_types = Shift.objects.values_list("template__shift_type", "template__shift_type").distinct()
+            self.fields["shift_type"].choices = [("", "All Types"), *list(shift_types)]
+        except:
+            # If database is not ready (migrations not run), keep default
+            pass
+
 
 
 class BulkSwapApprovalForm(forms.Form):

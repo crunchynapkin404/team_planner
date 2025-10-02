@@ -54,6 +54,8 @@ import {
 import { useOrchestrator } from '../hooks/useOrchestrator';
 import { apiClient } from '../services/apiClient';
 import { API_CONFIG } from '../config/api';
+import { usePermissions } from '../hooks/usePermissions';
+import PermissionGate from '../components/auth/PermissionGate';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -116,6 +118,7 @@ interface OrchestrationRun {
 }
 
 const UnifiedOrchestratorPage: React.FC = () => {
+  const { hasPermission } = usePermissions();
   const [tabValue, setTabValue] = useState(0);
   
   // Orchestration form state
@@ -237,6 +240,11 @@ const UnifiedOrchestratorPage: React.FC = () => {
   };
 
   const handleRun = async () => {
+    if (!hasPermission('can_run_orchestrator')) {
+      setError('You do not have permission to run the orchestrator.');
+      return;
+    }
+
     if (!startDate || !endDate || !selectedTeam) {
       setError('Please select start date, end date, and team');
       return;
@@ -534,16 +542,18 @@ const UnifiedOrchestratorPage: React.FC = () => {
                 />
 
                 <Box sx={{ mt: 3 }}>
-                  <Button
-                    variant="contained"
-                    size="large"
-                    startIcon={previewOnly ? <Preview /> : <CheckCircle />}
-                    onClick={handleRun}
-                    disabled={loading || !selectedTeam}
-                    fullWidth
-                  >
-                    {loading ? 'Running...' : (previewOnly ? 'Preview Orchestration' : 'Run Orchestration')}
-                  </Button>
+                  <PermissionGate permission="can_run_orchestrator">
+                    <Button
+                      variant="contained"
+                      size="large"
+                      startIcon={previewOnly ? <Preview /> : <CheckCircle />}
+                      onClick={handleRun}
+                      disabled={loading || !selectedTeam}
+                      fullWidth
+                    >
+                      {loading ? 'Running...' : (previewOnly ? 'Preview Orchestration' : 'Run Orchestration')}
+                    </Button>
+                  </PermissionGate>
                 </Box>
               </Paper>
             </Grid>

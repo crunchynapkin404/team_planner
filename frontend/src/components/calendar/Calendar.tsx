@@ -41,34 +41,7 @@ import {
   ChevronRight as ChevronRightIcon,
   Today as TodayIcon,
 } from '@mui/icons-material';
-
-interface CalendarEvent {
-  id: string;
-  title: string;
-  start: string;
-  end: string;
-  resourceId?: string;
-  backgroundColor?: string;
-  borderColor?: string;
-  extendedProps?: {
-    shiftType?: 'incident' | 'incidents' | 'incidents_standby' | 'waakdienst' | 'project' | 'change';
-    leaveType?: 'vacation' | 'sick' | 'personal' | 'other';
-    engineerName: string;
-    engineerId: string;
-    status?: 'confirmed' | 'pending' | 'swap_requested' | 'approved' | 'rejected' | 'cancelled';
-    teamId?: string;
-    teamName?: string;
-    eventType?: 'shift' | 'leave';
-    reason?: string;
-    days_requested?: number;
-    leave_type_name?: string;
-    leave_type_color?: string;
-    isRecurring?: boolean;
-    recurringPatternId?: number;
-    coverage_type?: string;
-    description?: string;
-  };
-}
+import { CalendarEvent } from '../../types/calendar';
 
 interface CalendarProps {
   events: CalendarEvent[];

@@ -1,16 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Alert, CircularProgress } from '@mui/material';
-import Calendar from '../components/calendar/Calendar';
+import ResponsiveCalendar from '../components/calendar/ResponsiveCalendar';
 import { EventDropArg, EventClickArg, DateSelectArg } from '@fullcalendar/core';
 import { CalendarEvent } from '../types/calendar';
-import { formatDate } from '../utils/dateUtils';
 import { apiClient } from '../services/apiClient';
 import { API_CONFIG } from '../config/api';
+import { usePermissions } from '../hooks/usePermissions';
 
 const CalendarPage: React.FC = () => {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { hasPermission } = usePermissions();
 
   // Fetch shifts from the API
   // Fetch shifts from the API
@@ -36,6 +37,9 @@ const CalendarPage: React.FC = () => {
   }, []);
 
   const handleEventDrop = (info: EventDropArg) => {
+    // All users can request swaps, but let's keep this for future permission checks
+    // In the future, you might want to check if user owns the shift being dragged
+
     // Handle event drop - this would trigger a swap request
     const { event } = info;
     
@@ -90,6 +94,12 @@ const CalendarPage: React.FC = () => {
   };
 
   const handleDateSelect = (info: DateSelectArg) => {
+    // Check if user has permission to create shifts
+    if (!hasPermission('can_create_shifts')) {
+      alert('You do not have permission to create shifts.');
+      return;
+    }
+
     // Handle date selection - create new shift
     console.log('Date selected:', {
       start: info.start,
@@ -97,7 +107,7 @@ const CalendarPage: React.FC = () => {
     });
     
     // TODO: Open create shift modal
-    const newShift = confirm(`Create new shift for ${formatDate(info.start)}?`);
+    const newShift = confirm(`Create new shift for ${info.start?.toLocaleDateString()}?`);
     if (newShift) {
       console.log('Creating new shift...');
       // TODO: Implement shift creation
@@ -118,7 +128,7 @@ const CalendarPage: React.FC = () => {
         </Box>
       )}
       
-      <Calendar
+      <ResponsiveCalendar
         events={events}
         onEventDrop={handleEventDrop}
         onEventClick={handleEventClick}

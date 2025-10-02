@@ -45,6 +45,7 @@ import {
 import { apiClient } from '../services/apiClient';
 import { API_CONFIG } from '../config/api';
 import RecurringLeavePatterns from '../components/RecurringLeavePatterns';
+import MFASettings from '../components/auth/MFASettings';
 
 interface User {
   id: number;
@@ -467,6 +468,11 @@ const ProfileManagement: React.FC = () => {
                 Change Password
               </Button>
             </CardActions>
+          </Card>
+
+          {/* Multi-Factor Authentication */}
+          <Card>
+            <MFASettings />
           </Card>
 
           {/* Notification Settings */}

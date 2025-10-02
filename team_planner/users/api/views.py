@@ -12,6 +12,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 
+from team_planner.rbac.decorators import require_permission
 from .serializers import UserSerializer
 
 User = get_user_model()
@@ -29,6 +30,24 @@ class UserViewSet(
     lookup_field = "username"
     permission_classes = [IsAuthenticated]
 
+    def get_object(self):
+        """Override to support both username and ID lookups."""
+        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+        lookup_value = self.kwargs.get(lookup_url_kwarg)
+        
+        # Try to get by ID first (if it's a number)
+        if lookup_value and lookup_value.isdigit():
+            try:
+                queryset = self.filter_queryset(self.get_queryset())
+                obj = queryset.get(id=int(lookup_value))
+                self.check_object_permissions(self.request, obj)
+                return obj
+            except User.DoesNotExist:
+                pass
+        
+        # Fall back to username lookup
+        return super().get_object()
+
     def get_queryset(self):
         # If user is staff/admin, they can see all users
         if self.request.user.is_staff or self.request.user.is_superuser:
@@ -45,6 +64,26 @@ class UserViewSet(
         else:
             permission_classes = [IsAuthenticated]
         return [permission() for permission in permission_classes]
+
+    @require_permission('can_manage_users')
+    def list(self, request, *args, **kwargs):
+        """List users - requires can_manage_users permission."""
+        return super().list(request, *args, **kwargs)
+    
+    @require_permission('can_manage_users')
+    def create(self, request, *args, **kwargs):
+        """Create user - requires can_manage_users permission."""
+        return super().create(request, *args, **kwargs)
+    
+    @require_permission('can_manage_users')
+    def update(self, request, *args, **kwargs):
+        """Update user - requires can_manage_users permission."""
+        return super().update(request, *args, **kwargs)
+    
+    @require_permission('can_manage_users')
+    def partial_update(self, request, *args, **kwargs):
+        """Partially update user - requires can_manage_users permission."""
+        return super().partial_update(request, *args, **kwargs)
 
     def perform_create(self, serializer):
         """Override to add permission check for user creation."""

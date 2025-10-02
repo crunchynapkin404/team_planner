@@ -41,6 +41,7 @@ import {
 import { userService, type TeamMember, type UserShift, type SwapRequest } from '../services/userService';
 import { formatDate as euroFormatDate, formatDateTime as euroFormatDateTime, formatTime as euroFormatTime } from '../utils/dateUtils';
 import BulkSwapDialog from '../components/BulkSwapDialog';
+import { usePermissions } from '../hooks/usePermissions';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -69,6 +70,7 @@ function TabPanel(props: TabPanelProps) {
 }
 
 const ShiftSwapsPage: React.FC = () => {
+  const { hasPermission } = usePermissions();
   const [tabValue, setTabValue] = useState(0);
   const [incomingSwaps, setIncomingSwaps] = useState<SwapRequest[]>([]);
   const [outgoingSwaps, setOutgoingSwaps] = useState<SwapRequest[]>([]);
@@ -367,24 +369,28 @@ const ShiftSwapsPage: React.FC = () => {
 
           {swap.status === 'pending' && showRequester && (
             <Box sx={{ display: 'flex', gap: 1 }}>
-              <Button
-                size="small"
-                variant="contained"
-                color="success"
-                startIcon={<CheckCircle />}
-                onClick={() => handleResponseOpen(swap, 'approve')}
-              >
-                Approve
-              </Button>
-              <Button
-                size="small"
-                variant="outlined"
-                color="error"
-                startIcon={<Cancel />}
-                onClick={() => handleResponseOpen(swap, 'reject')}
-              >
-                Reject
-              </Button>
+              {hasPermission('can_approve_swap') && (
+                <Button
+                  size="small"
+                  variant="contained"
+                  color="success"
+                  startIcon={<CheckCircle />}
+                  onClick={() => handleResponseOpen(swap, 'approve')}
+                >
+                  Approve
+                </Button>
+              )}
+              {hasPermission('can_reject_swap') && (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  color="error"
+                  startIcon={<Cancel />}
+                  onClick={() => handleResponseOpen(swap, 'reject')}
+                >
+                  Reject
+                </Button>
+              )}
             </Box>
           )}
         </Box>

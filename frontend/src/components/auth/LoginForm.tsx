@@ -7,13 +7,19 @@ import {
   Box,
   Alert,
   CircularProgress,
+  Link,
 } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
 import authService from '../../services/authService';
 import { LoginCredentials } from '../../types';
+import MFALogin from './MFALogin';
 
 const LoginForm: React.FC = () => {
+  const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showMFADialog, setShowMFADialog] = useState(false);
+  const [mfaUserId, setMfaUserId] = useState<number | null>(null);
   
   const [credentials, setCredentials] = useState<LoginCredentials>({
     username: '',
@@ -39,14 +45,32 @@ const LoginForm: React.FC = () => {
     setError(null);
 
     try {
-      await authService.login(credentials);
-      // Redirect to dashboard on successful login
-      window.location.href = '/dashboard';
+      const response = await authService.login(credentials);
+      
+      if (response.mfa_required) {
+        // MFA is required - show MFA dialog
+        setMfaUserId(response.user_id || null);
+        setShowMFADialog(true);
+        setIsLoading(false);
+      } else {
+        // No MFA - redirect to dashboard
+        window.location.href = '/dashboard';
+      }
     } catch (err: any) {
       setError(err.message || 'Login failed. Please try again.');
-    } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleMFASuccess = () => {
+    // MFA verified successfully - redirect to dashboard
+    window.location.href = '/dashboard';
+  };
+
+  const handleMFAClose = () => {
+    setShowMFADialog(false);
+    setMfaUserId(null);
+    setIsLoading(false);
   };
 
   return (
@@ -112,8 +136,31 @@ const LoginForm: React.FC = () => {
           >
             {isLoading ? 'Signing In...' : 'Sign In'}
           </Button>
+
+          <Typography variant="body2" align="center" sx={{ mt: 2 }}>
+            Don't have an account?{' '}
+            <Link
+              component="button"
+              variant="body2"
+              onClick={(e) => {
+                e.preventDefault();
+                navigate('/register');
+              }}
+              sx={{ cursor: 'pointer' }}
+            >
+              Create one
+            </Link>
+          </Typography>
         </Box>
       </Paper>
+      
+      {/* MFA Dialog */}
+      <MFALogin
+        open={showMFADialog}
+        onClose={handleMFAClose}
+        onSuccess={handleMFASuccess}
+        userId={mfaUserId}
+      />
     </Box>
   );
 };

@@ -22,6 +22,7 @@ from rest_framework.exceptions import ParseError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from team_planner.rbac.decorators import check_user_permission
 from team_planner.employees.models import EmployeeProfile
 from team_planner.shifts.models import Shift
 from team_planner.teams.models import Department
@@ -55,15 +56,13 @@ def orchestrator_schedule_v2(request):
         }
     }
     """
-    # Staff permission required
-    if not (
-        request.user.is_staff
-        or request.user.has_perm("orchestrators.add_orchestrationrun")
-    ):
+    # Check RBAC permission
+    if not check_user_permission(request.user, 'can_run_orchestrator'):
         return Response(
             {
-                "error": "Permission denied - staff access required",
+                "error": "Permission denied - can_run_orchestrator permission required",
                 "code": "PERMISSION_DENIED",
+                "required_permission": "can_run_orchestrator"
             },
             status=status.HTTP_403_FORBIDDEN,
         )

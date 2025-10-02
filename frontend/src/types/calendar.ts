@@ -8,14 +8,14 @@ export interface CalendarEvent {
   backgroundColor?: string;
   borderColor?: string;
   extendedProps?: {
-    shiftType?: 'incident' | 'incidents' | 'incidents_standby' | 'waakdienst' | 'project' | 'change';
-    leaveType?: 'vacation' | 'sick' | 'personal' | 'other';
+    shiftType?: string;
+    leaveType?: string;
     engineerName: string;
     engineerId: string;
-    status: 'confirmed' | 'pending' | 'swap_requested' | 'approved' | 'rejected' | 'cancelled';
+    status?: string;
     teamId?: string;
     teamName?: string;
-    eventType: 'shift' | 'leave';
+    eventType?: 'shift' | 'leave';
     reason?: string;
     days_requested?: number;
     leave_type_name?: string;

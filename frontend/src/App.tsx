@@ -13,6 +13,14 @@ import TeamManagement from './pages/TeamManagement';
 import ProfileManagement from './pages/ProfileManagement';
 import ShiftSwapsPage from './pages/ShiftSwapsPage';
 import LeaveRequestPage from './pages/LeaveRequestPage';
+import ConflictResolutionPage from './pages/ConflictResolutionPage';
+import ReportsDashboard from './pages/ReportsDashboard';
+import UnifiedManagement from './pages/UnifiedManagement';
+import RecurringPatternsPage from './pages/RecurringPatternsPage';
+import ShiftTemplateLibrary from './pages/ShiftTemplateLibrary';
+import BulkShiftOperations from './pages/BulkShiftOperations';
+import ApprovalRulesPage from './pages/ApprovalRulesPage';
+import PendingApprovalsPage from './pages/PendingApprovalsPage';
 
 function App() {
   const isAuthenticated = apiClient.isAuthenticated();
@@ -89,6 +97,17 @@ function App() {
       />
       
       <Route
+        path="/management"
+        element={
+          <PrivateRoute>
+            <MainLayout>
+              <UnifiedManagement />
+            </MainLayout>
+          </PrivateRoute>
+        }
+      />
+      
+      <Route
         path="/profile"
         element={
           <PrivateRoute>
@@ -144,6 +163,50 @@ function App() {
       />
       
       <Route
+        path="/reports"
+        element={
+          <PrivateRoute>
+            <MainLayout>
+              <ReportsDashboard />
+            </MainLayout>
+          </PrivateRoute>
+        }
+      />
+      
+      <Route
+        path="/patterns"
+        element={
+          <PrivateRoute>
+            <MainLayout>
+              <RecurringPatternsPage />
+            </MainLayout>
+          </PrivateRoute>
+        }
+      />
+      
+      <Route
+        path="/templates"
+        element={
+          <PrivateRoute>
+            <MainLayout>
+              <ShiftTemplateLibrary />
+            </MainLayout>
+          </PrivateRoute>
+        }
+      />
+      
+      <Route
+        path="/bulk-operations"
+        element={
+          <PrivateRoute>
+            <MainLayout>
+              <BulkShiftOperations />
+            </MainLayout>
+          </PrivateRoute>
+        }
+      />
+      
+      <Route
         path="/fairness"
         element={
           <PrivateRoute>
@@ -188,6 +251,39 @@ function App() {
           <PrivateRoute>
             <MainLayout>
               <LeaveRequestPage />
+            </MainLayout>
+          </PrivateRoute>
+        }
+      />
+      
+      <Route
+        path="/leave-conflicts"
+        element={
+          <PrivateRoute>
+            <MainLayout>
+              <ConflictResolutionPage />
+            </MainLayout>
+          </PrivateRoute>
+        }
+      />
+      
+      <Route
+        path="/approval-rules"
+        element={
+          <PrivateRoute>
+            <MainLayout>
+              <ApprovalRulesPage />
+            </MainLayout>
+          </PrivateRoute>
+        }
+      />
+      
+      <Route
+        path="/pending-approvals"
+        element={
+          <PrivateRoute>
+            <MainLayout>
+              <PendingApprovalsPage />
             </MainLayout>
           </PrivateRoute>
         }

@@ -15,6 +15,7 @@ import {
 } from '@mui/icons-material';
 import { useAppDispatch, useAppSelector } from '../../hooks/redux';
 import { logout } from '../../store/slices/authSlice';
+import NotificationBell from '../notifications/NotificationBell';
 
 const TopNavigation: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -45,6 +46,9 @@ const TopNavigation: React.FC = () => {
           <Typography variant="body1" sx={{ mr: 2 }}>
             Welcome, {user?.name || user?.username}
           </Typography>
+          
+          {/* Notification Bell */}
+          <NotificationBell />
           
           <IconButton
             size="large"

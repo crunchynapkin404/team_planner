@@ -25,3 +25,7 @@ drf-spectacular==0.28.0  # https://github.com/tfranzel/drf-spectacular
 
 # Notifications / ICS
 icalendar==5.0.12  # https://github.com/collective/icalendar
+
+# MFA dependencies
+pyotp==2.9.0  # https://github.com/pyauth/pyotp
+qrcode[pil]==7.4.2  # https://github.com/lincolnloop/python-qrcode

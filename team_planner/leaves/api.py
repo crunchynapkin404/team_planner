@@ -6,12 +6,14 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date
 from rest_framework import status
 from rest_framework import viewsets
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from team_planner.rbac.decorators import require_permission
 from team_planner.notifications.mailer import build_ics_for_leave
 from team_planner.notifications.mailer import notify_leave_approved
+from team_planner.notifications.services import NotificationService
 
 from .models import LeaveRequest
 from .models import LeaveType
@@ -110,9 +112,15 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
+    @require_permission('can_request_leave')
+    def create(self, request, *args, **kwargs):
+        """Create leave request - requires can_request_leave permission."""
+        return super().create(request, *args, **kwargs)
+
     @action(detail=True, methods=["post"])
+    @require_permission('can_approve_leave')
     def approve(self, request, pk=None):
-        """Approve a leave request."""
+        """Approve a leave request - requires can_approve_leave permission."""
         # Ensure view has a request when called directly
         self.request = request
         leave_request = self.get_object()
@@ -160,12 +168,24 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         except Exception:
             pass
 
+        # Send notification via NotificationService
+        try:
+            NotificationService.notify_leave_approved(
+                employee=leave_request.employee,
+                leave_request=leave_request,
+                approved_by=user
+            )
+        except Exception as e:
+            # Log but don't fail the request if notification fails
+            print(f"Failed to send leave approved notification: {e}")
+
         serializer = self.get_serializer(leave_request)
         return Response(serializer.data)
 
     @action(detail=True, methods=["post"])
+    @require_permission('can_approve_leave')
     def reject(self, request, pk=None):
-        """Reject a leave request."""
+        """Reject a leave request - requires can_approve_leave permission."""
         # Ensure view has a request when called directly
         self.request = request
         leave_request = self.get_object()
@@ -193,6 +213,18 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         leave_request.approved_by = user
         leave_request.rejection_reason = rejection_reason
         leave_request.save()
+
+        # Send notification via NotificationService
+        try:
+            NotificationService.notify_leave_rejected(
+                employee=leave_request.employee,
+                leave_request=leave_request,
+                rejected_by=user,
+                reason=rejection_reason
+            )
+        except Exception as e:
+            # Log but don't fail the request if notification fails
+            print(f"Failed to send leave rejected notification: {e}")
 
         self.get_serializer(leave_request)
         return Response(
@@ -421,3 +453,299 @@ class LeaveTypeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LeaveType.objects.all()
     serializer_class = LeaveTypeSerializer
     permission_classes = [IsAuthenticated]
+
+
+# ========== Leave Conflict Resolution API ==========
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def check_leave_conflicts(request):
+    """
+    Check for conflicts before creating a leave request.
+    
+    POST /api/leaves/check-conflicts/
+    {
+        "employee_id": 1,
+        "start_date": "2025-02-01",
+        "end_date": "2025-02-05",
+        "team_id": 1  // optional
+    }
+    """
+    from .conflict_service import LeaveConflictDetector
+    
+    employee_id = request.data.get("employee_id") or request.user.id
+    start_date = parse_date(request.data.get("start_date"))
+    end_date = parse_date(request.data.get("end_date"))
+    team_id = request.data.get("team_id")
+    department_id = request.data.get("department_id")
+    
+    if not start_date or not end_date:
+        return Response(
+            {"error": "start_date and end_date are required"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    
+    employee = User.objects.get(id=employee_id)
+    
+    # Check for personal overlaps
+    personal_conflicts = LeaveConflictDetector.detect_overlapping_requests(
+        employee, start_date, end_date
+    )
+    
+    # Check for team conflicts
+    team_conflicts = LeaveConflictDetector.detect_team_conflicts(
+        start_date, end_date, team_id, department_id
+    )
+    
+    # Check staffing levels
+    staffing = LeaveConflictDetector.analyze_staffing_levels(
+        start_date, end_date, team_id, department_id, min_required_staff=2
+    )
+    
+    # Check shift conflicts
+    shift_conflicts = LeaveConflictDetector.get_shift_conflicts(
+        employee, start_date, end_date
+    )
+    
+    return Response({
+        "has_conflicts": len(personal_conflicts) > 0 or staffing['is_understaffed'],
+        "personal_conflicts": [
+            {
+                "id": c.id,
+                "start_date": c.start_date.isoformat(),
+                "end_date": c.end_date.isoformat(),
+                "leave_type": c.leave_type.name,
+                "status": c.status,
+            }
+            for c in personal_conflicts
+        ],
+        "team_conflicts_by_day": team_conflicts,
+        "staffing_analysis": staffing,
+        "shift_conflicts": [
+            {
+                "id": s.id,
+                "start": s.start_datetime.isoformat(),
+                "end": s.end_datetime.isoformat(),
+                "type": s.template.shift_type,
+                "status": s.status,
+            }
+            for s in shift_conflicts
+        ],
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def suggest_alternative_dates(request):
+    """
+    Suggest alternative dates for a leave request.
+    
+    POST /api/leaves/suggest-alternatives/
+    {
+        "employee_id": 1,
+        "start_date": "2025-02-01",
+        "days_requested": 5,
+        "team_id": 1  // optional
+    }
+    """
+    from .conflict_service import LeaveConflictDetector
+    
+    employee_id = request.data.get("employee_id") or request.user.id
+    start_date = parse_date(request.data.get("start_date"))
+    days_requested = int(request.data.get("days_requested", 1))
+    team_id = request.data.get("team_id")
+    department_id = request.data.get("department_id")
+    
+    if not start_date:
+        return Response(
+            {"error": "start_date is required"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    
+    employee = User.objects.get(id=employee_id)
+    
+    suggestions = LeaveConflictDetector.suggest_alternative_dates(
+        employee, start_date, days_requested, team_id, department_id
+    )
+    
+    return Response({
+        "suggestions": [
+            {
+                "start_date": s['start_date'].isoformat(),
+                "end_date": s['end_date'].isoformat(),
+                "conflict_score": s['conflict_score'],
+                "is_understaffed": s['is_understaffed'],
+                "days_offset": s['days_offset'],
+            }
+            for s in suggestions
+        ],
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+@require_permission('can_approve_leave')
+def get_conflicting_requests(request):
+    """
+    Get all conflicting leave requests that need resolution.
+    
+    GET /api/leaves/conflicts/
+    ?start_date=2025-02-01&end_date=2025-02-28
+    """
+    start_date = parse_date(request.query_params.get("start_date"))
+    end_date = parse_date(request.query_params.get("end_date"))
+    team_id = request.query_params.get("team_id")
+    department_id = request.query_params.get("department_id")
+    
+    if not start_date or not end_date:
+        return Response(
+            {"error": "start_date and end_date are required"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    
+    from .conflict_service import LeaveConflictDetector
+    
+    # Get team conflicts
+    team_conflicts = LeaveConflictDetector.detect_team_conflicts(
+        start_date, end_date, team_id, department_id
+    )
+    
+    # Filter to days with 2+ people on leave
+    conflict_days = {
+        day_key: day_data
+        for day_key, day_data in team_conflicts.items()
+        if day_data['leave_count'] >= 2
+    }
+    
+    # Get staffing analysis
+    staffing = LeaveConflictDetector.analyze_staffing_levels(
+        start_date, end_date, team_id, department_id, min_required_staff=2
+    )
+    
+    return Response({
+        "conflict_days": conflict_days,
+        "understaffed_days": staffing['understaffed_days'],
+        "warning_days": staffing['warning_days'],
+        "total_team_size": staffing['total_team_size'],
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@require_permission('can_approve_leave')
+def resolve_conflict(request):
+    """
+    Resolve a leave conflict by approving one request and rejecting others.
+    
+    POST /api/leaves/resolve-conflict/
+    {
+        "approve_request_id": 15,
+        "reject_request_ids": [16, 17],
+        "resolution_notes": "Approved based on seniority"
+    }
+    """
+    from .conflict_service import LeaveConflictResolver
+    
+    approve_id = request.data.get("approve_request_id")
+    reject_ids = request.data.get("reject_request_ids", [])
+    resolution_notes = request.data.get("resolution_notes", "")
+    
+    if not approve_id:
+        return Response(
+            {"error": "approve_request_id is required"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    
+    try:
+        request_to_approve = LeaveRequest.objects.get(id=approve_id)
+        requests_to_reject = LeaveRequest.objects.filter(id__in=reject_ids)
+        
+        result = LeaveConflictResolver.apply_resolution(
+            request_to_approve,
+            list(requests_to_reject),
+            request.user,
+            resolution_notes,
+        )
+        
+        return Response(result, status=status.HTTP_200_OK)
+        
+    except LeaveRequest.DoesNotExist:
+        return Response(
+            {"error": "Leave request not found"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    except Exception as e:
+        return Response(
+            {"error": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@require_permission('can_approve_leave')
+def get_resolution_recommendation(request):
+    """
+    Get AI-recommended resolution for conflicting requests.
+    
+    POST /api/leaves/recommend-resolution/
+    {
+        "request_ids": [15, 16, 17]
+    }
+    """
+    from .conflict_service import LeaveConflictResolver
+    
+    request_ids = request.data.get("request_ids", [])
+    
+    if not request_ids:
+        return Response(
+            {"error": "request_ids is required"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    
+    try:
+        conflicting_requests = list(
+            LeaveRequest.objects.filter(id__in=request_ids).select_related(
+                'employee', 'leave_type'
+            )
+        )
+        
+        recommendation = LeaveConflictResolver.get_recommended_resolution(
+            conflicting_requests
+        )
+        
+        # Serialize the recommendation
+        recommended_req = recommendation['recommended']
+        
+        return Response({
+            "recommended_request": {
+                "id": recommended_req.id,
+                "employee": {
+                    "id": recommended_req.employee.id,
+                    "name": recommended_req.employee.get_full_name(),
+                },
+                "start_date": recommended_req.start_date.isoformat(),
+                "end_date": recommended_req.end_date.isoformat(),
+                "leave_type": recommended_req.leave_type.name,
+            } if recommended_req else None,
+            "recommendation_details": recommendation['recommendation_details'],
+            "vote_counts": recommendation['vote_counts'],
+            "alternatives": [
+                {
+                    "id": alt.id,
+                    "employee": {
+                        "id": alt.employee.id,
+                        "name": alt.employee.get_full_name(),
+                    },
+                    "start_date": alt.start_date.isoformat(),
+                    "end_date": alt.end_date.isoformat(),
+                }
+                for alt in recommendation['alternatives']
+            ],
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response(
+            {"error": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )

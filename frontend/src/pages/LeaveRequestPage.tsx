@@ -58,9 +58,17 @@ import {
 } from '../services/leaveService';
 import { formatDate, formatDateTime } from '../utils/dateUtils';
 import BulkSwapDialog from '../components/BulkSwapDialog';
+import { usePermissions } from '../hooks/usePermissions';
+import ConflictWarningBanner from '../components/leaves/ConflictWarningBanner';
+import AlternativeDatesDialog from '../components/leaves/AlternativeDatesDialog';
+import leaveConflictService, {
+  type ConflictCheckResponse,
+  type AlternativeSuggestion,
+} from '../services/leaveConflictService';
 
 const LeaveRequestPage: React.FC = () => {
   const { user } = useSelector((state: RootState) => state.auth) as { user: any };
+  const { hasPermission } = usePermissions();
   
   // State management
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
@@ -91,6 +99,13 @@ const LeaveRequestPage: React.FC = () => {
   const [loadingConflicts, setLoadingConflicts] = useState(false);
   const [bulkSwapDialogOpen, setBulkSwapDialogOpen] = useState(false);
 
+  // Conflict checking state
+  const [conflicts, setConflicts] = useState<ConflictCheckResponse | null>(null);
+  const [checkingConflicts, setCheckingConflicts] = useState(false);
+  const [showAlternatives, setShowAlternatives] = useState(false);
+  const [alternatives, setAlternatives] = useState<AlternativeSuggestion[]>([]);
+  const [loadingAlternatives, setLoadingAlternatives] = useState(false);
+
   // Create form state
   const [createForm, setCreateForm] = useState({
     leave_type_id: '',
@@ -111,6 +126,34 @@ const LeaveRequestPage: React.FC = () => {
   useEffect(() => {
     loadData();
   }, [filters, currentPage]);
+
+  // Check for conflicts when dates change
+  useEffect(() => {
+    const checkConflicts = async () => {
+      if (createForm.start_date && createForm.end_date && user?.employee_id) {
+        setCheckingConflicts(true);
+        try {
+          const conflictData = await leaveConflictService.checkConflicts({
+            employee_id: user.employee_id,
+            start_date: createForm.start_date,
+            end_date: createForm.end_date,
+            team_id: user.team_id,
+            department_id: user.department_id,
+          });
+          setConflicts(conflictData);
+        } catch (error) {
+          console.error('Error checking conflicts:', error);
+          setConflicts(null);
+        } finally {
+          setCheckingConflicts(false);
+        }
+      } else {
+        setConflicts(null);
+      }
+    };
+
+    checkConflicts();
+  }, [createForm.start_date, createForm.end_date, user]);
 
   const loadData = async () => {
     try {
@@ -316,6 +359,39 @@ const LeaveRequestPage: React.FC = () => {
       recurrence_type: 'none',
       recurrence_end_date: '',
     });
+    setConflicts(null);
+    setShowAlternatives(false);
+    setAlternatives([]);
+  };
+
+  const handleViewAlternatives = async () => {
+    if (!createForm.start_date || !user?.employee_id) return;
+    
+    setLoadingAlternatives(true);
+    try {
+      const suggestions = await leaveConflictService.suggestAlternatives({
+        employee_id: user.employee_id,
+        start_date: createForm.start_date,
+        days_requested: createForm.days_requested || 1,
+        team_id: user.team_id,
+        department_id: user.department_id,
+      });
+      setAlternatives(suggestions);
+      setShowAlternatives(true);
+    } catch (error) {
+      console.error('Error getting alternative dates:', error);
+    } finally {
+      setLoadingAlternatives(false);
+    }
+  };
+
+  const handleSelectAlternative = (startDate: string, endDate: string) => {
+    setCreateForm(prev => ({
+      ...prev,
+      start_date: startDate,
+      end_date: endDate,
+    }));
+    setShowAlternatives(false);
   };
 
   const handleShowConflicts = async (leaveRequest: LeaveRequest) => {
@@ -335,10 +411,9 @@ const LeaveRequestPage: React.FC = () => {
 
   const canApprove = (leaveRequest: LeaveRequest): boolean => {
     return (
-      user?.permissions?.includes('leaves.change_leaverequest') ||
-      user?.is_staff ||
-      false
-    ) && leaveRequest.status === 'pending';
+      hasPermission('can_approve_leave') && 
+      leaveRequest.status === 'pending'
+    );
   };
 
   const canCancel = (leaveRequest: LeaveRequest): boolean => {
@@ -758,6 +833,20 @@ const LeaveRequestPage: React.FC = () => {
               </Alert>
             )}
             
+            {/* Conflict Warning Banner */}
+            {conflicts && conflicts.has_conflicts && (
+              <ConflictWarningBanner 
+                conflicts={conflicts}
+                onViewAlternatives={handleViewAlternatives}
+              />
+            )}
+            
+            {checkingConflicts && (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                Checking for conflicts...
+              </Alert>
+            )}
+            
             <Grid container spacing={2}>
               {/* Leave Type */}
               <Grid item xs={12}>
@@ -950,13 +1039,30 @@ const LeaveRequestPage: React.FC = () => {
           <Button 
             onClick={handleCreateSubmit} 
             variant="contained"
-            disabled={createLoading || !createForm.leave_type_id || !createForm.start_date || !createForm.end_date}
+            disabled={
+              createLoading || 
+              !createForm.leave_type_id || 
+              !createForm.start_date || 
+              !createForm.end_date ||
+              checkingConflicts ||
+              (conflicts && (conflicts.personal_conflicts.length > 0 || conflicts.shift_conflicts.length > 0))
+            }
             startIcon={createLoading ? <CircularProgress size={16} /> : undefined}
           >
             {createLoading ? 'Creating...' : 'Create Request'}
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Alternative Dates Dialog */}
+      <AlternativeDatesDialog
+        open={showAlternatives}
+        onClose={() => setShowAlternatives(false)}
+        suggestions={alternatives}
+        loading={loadingAlternatives}
+        originalStartDate={createForm.start_date}
+        onSelectDate={handleSelectAlternative}
+      />
       
       {/* Simple Detail Dialog - placeholder for now */}
       <Dialog open={detailDialogOpen} onClose={() => setDetailDialogOpen(false)} maxWidth="md" fullWidth>

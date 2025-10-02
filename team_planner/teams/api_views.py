@@ -5,6 +5,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from team_planner.rbac.decorators import require_permission
 from .models import Department
 from .models import Team
 from .models import TeamMembership
@@ -33,6 +34,36 @@ class TeamViewSet(viewsets.ModelViewSet):
             permission_classes = [IsAuthenticated]
         return [permission() for permission in permission_classes]
 
+    @require_permission('can_manage_team')
+    def list(self, request, *args, **kwargs):
+        """List teams - requires can_manage_team permission."""
+        return super().list(request, *args, **kwargs)
+    
+    @require_permission('can_manage_team')
+    def retrieve(self, request, *args, **kwargs):
+        """Retrieve team - requires can_manage_team permission."""
+        return super().retrieve(request, *args, **kwargs)
+    
+    @require_permission('can_manage_team')
+    def create(self, request, *args, **kwargs):
+        """Create team - requires can_manage_team permission."""
+        return super().create(request, *args, **kwargs)
+    
+    @require_permission('can_manage_team')
+    def update(self, request, *args, **kwargs):
+        """Update team - requires can_manage_team permission."""
+        return super().update(request, *args, **kwargs)
+    
+    @require_permission('can_manage_team')
+    def partial_update(self, request, *args, **kwargs):
+        """Partially update team - requires can_manage_team permission."""
+        return super().partial_update(request, *args, **kwargs)
+    
+    @require_permission('can_manage_team')
+    def destroy(self, request, *args, **kwargs):
+        """Delete team - requires can_manage_team permission."""
+        return super().destroy(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         """Override to add permission check for team creation."""
         if not (self.request.user.is_staff or self.request.user.is_superuser):
@@ -52,7 +83,7 @@ class TeamViewSet(viewsets.ModelViewSet):
 
         serializer.save()
 
-    def create(self, request, *args, **kwargs):
+    def _create_impl(self, request, *args, **kwargs):
         """Override create to provide better error logging."""
         import logging
 
@@ -91,8 +122,9 @@ class TeamViewSet(viewsets.ModelViewSet):
         instance.delete()
 
     @action(detail=True, methods=["post"])
+    @require_permission('can_manage_team')
     def add_member(self, request, pk=None):
-        """Add a member to the team."""
+        """Add a member to the team - requires can_manage_team permission."""
         if not (request.user.is_staff or request.user.is_superuser):
             return Response(
                 {"error": "Only staff members can add team members."},
@@ -132,8 +164,9 @@ class TeamViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["delete"])
+    @require_permission('can_manage_team')
     def remove_member(self, request, pk=None):
-        """Remove a member from the team."""
+        """Remove a member from the team - requires can_manage_team permission."""
         if not (request.user.is_staff or request.user.is_superuser):
             return Response(
                 {"error": "Only staff members can remove team members."},
@@ -174,6 +207,36 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         else:
             permission_classes = [IsAuthenticated]
         return [permission() for permission in permission_classes]
+    
+    @require_permission('can_manage_team')
+    def list(self, request, *args, **kwargs):
+        """List departments - requires can_manage_team permission."""
+        return super().list(request, *args, **kwargs)
+    
+    @require_permission('can_manage_team')
+    def retrieve(self, request, *args, **kwargs):
+        """Retrieve department - requires can_manage_team permission."""
+        return super().retrieve(request, *args, **kwargs)
+    
+    @require_permission('can_manage_team')
+    def create(self, request, *args, **kwargs):
+        """Create department - requires can_manage_team permission."""
+        return super().create(request, *args, **kwargs)
+    
+    @require_permission('can_manage_team')
+    def update(self, request, *args, **kwargs):
+        """Update department - requires can_manage_team permission."""
+        return super().update(request, *args, **kwargs)
+    
+    @require_permission('can_manage_team')
+    def partial_update(self, request, *args, **kwargs):
+        """Partially update department - requires can_manage_team permission."""
+        return super().partial_update(request, *args, **kwargs)
+    
+    @require_permission('can_manage_team')
+    def destroy(self, request, *args, **kwargs):
+        """Delete department - requires can_manage_team permission."""
+        return super().destroy(request, *args, **kwargs)
 
     def perform_create(self, serializer):
         """Override to add permission check for department creation."""

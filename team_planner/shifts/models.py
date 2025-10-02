@@ -35,17 +35,71 @@ class ShiftTemplate(TimeStampedModel):
         help_text=_("Skills required for this shift type"),
     )
     is_active = models.BooleanField(_("Is Active"), default=True)
+    
+    # Enhanced library fields
+    category = models.CharField(
+        _("Category"),
+        max_length=50,
+        blank=True,
+        help_text=_("Template category for organization (e.g., 'Weekend', 'Holiday', 'Standard')"),
+    )
+    tags = models.JSONField(
+        _("Tags"),
+        default=list,
+        blank=True,
+        help_text=_("Tags for searchability and filtering"),
+    )
+    is_favorite = models.BooleanField(
+        _("Favorite"),
+        default=False,
+        help_text=_("Mark as favorite for quick access"),
+    )
+    usage_count = models.PositiveIntegerField(
+        _("Usage Count"),
+        default=0,
+        help_text=_("Number of times this template has been used"),
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_shift_templates",
+        verbose_name=_("Created By"),
+    )
+    default_start_time = models.TimeField(
+        _("Default Start Time"),
+        null=True,
+        blank=True,
+        help_text=_("Suggested start time for this template"),
+    )
+    default_end_time = models.TimeField(
+        _("Default End Time"),
+        null=True,
+        blank=True,
+        help_text=_("Suggested end time for this template"),
+    )
+    notes = models.TextField(
+        _("Notes"),
+        blank=True,
+        help_text=_("Additional notes or instructions"),
+    )
 
     class Meta:  # type: ignore[override]
         verbose_name = _("Shift Template")
         verbose_name_plural = _("Shift Templates")
-        ordering = ["shift_type", "name"]
+        ordering = ["-is_favorite", "-usage_count", "shift_type", "name"]
 
     def __str__(self):
         return f"{self.get_shift_type_display()} - {self.name}"  # type: ignore[attr-defined]
 
     def get_absolute_url(self):
         return reverse("shifts:template_detail", kwargs={"pk": self.pk})
+    
+    def increment_usage(self):
+        """Increment the usage count when template is used."""
+        self.usage_count += 1
+        self.save(update_fields=["usage_count"])
 
 
 class Shift(TimeStampedModel):
@@ -207,6 +261,7 @@ class SwapRequest(TimeStampedModel):
 
         from team_planner.notifications.mailer import build_ics_for_shift
         from team_planner.notifications.mailer import notify_swap_approved
+        from team_planner.notifications.services import NotificationService
 
         if not self.can_be_approved:
             msg = "Swap request cannot be approved in current status"
@@ -232,8 +287,27 @@ class SwapRequest(TimeStampedModel):
         except Exception:
             pass
 
+        # Send in-app notifications to both employees
+        try:
+            # Notify requesting employee
+            NotificationService.notify_swap_approved(
+                employee=self.requesting_employee,
+                swap_request=self,
+                approved_by=approved_by_user
+            )
+            # Notify target employee
+            NotificationService.notify_swap_approved(
+                employee=self.target_employee,
+                swap_request=self,
+                approved_by=approved_by_user
+            )
+        except Exception as e:
+            print(f"Failed to send swap approved notifications: {e}")
+
     def reject(self, response_notes=""):
         """Reject the swap request."""
+        from team_planner.notifications.services import NotificationService
+
         if not self.can_be_approved:
             msg = "Swap request cannot be rejected in current status"
             raise ValueError(msg)
@@ -241,6 +315,17 @@ class SwapRequest(TimeStampedModel):
         self.status = self.Status.REJECTED
         self.response_notes = response_notes
         self.save()
+
+        # Send in-app notification to requesting employee
+        try:
+            NotificationService.notify_swap_rejected(
+                employee=self.requesting_employee,
+                swap_request=self,
+                rejected_by=self.target_employee,
+                reason=response_notes
+            )
+        except Exception as e:
+            print(f"Failed to send swap rejected notification: {e}")
 
     def cancel(self):
         """Cancel the swap request."""
@@ -580,3 +665,472 @@ class ShiftAuditLog(TimeStampedModel):
         verbose_name = _("Shift Audit Log")
         verbose_name_plural = _("Shift Audit Logs")
         ordering = ["-created", "-id"]
+
+
+class RecurringShiftPattern(TimeStampedModel):
+    """Pattern for generating recurring shifts."""
+
+    class RecurrenceType(models.TextChoices):
+        DAILY = "daily", _("Daily")
+        WEEKLY = "weekly", _("Weekly")
+        BIWEEKLY = "biweekly", _("Bi-weekly")
+        MONTHLY = "monthly", _("Monthly")
+
+    class WeekDay(models.IntegerChoices):
+        MONDAY = 0, _("Monday")
+        TUESDAY = 1, _("Tuesday")
+        WEDNESDAY = 2, _("Wednesday")
+        THURSDAY = 3, _("Thursday")
+        FRIDAY = 4, _("Friday")
+        SATURDAY = 5, _("Saturday")
+        SUNDAY = 6, _("Sunday")
+
+    name = models.CharField(_("Pattern Name"), max_length=200)
+    description = models.TextField(_("Description"), blank=True)
+    
+    # Template and timing
+    template = models.ForeignKey(
+        ShiftTemplate,
+        on_delete=models.CASCADE,
+        related_name="recurring_patterns",
+        verbose_name=_("Shift Template"),
+    )
+    start_time = models.TimeField(_("Start Time"))
+    end_time = models.TimeField(_("End Time"))
+    
+    # Recurrence rules
+    recurrence_type = models.CharField(
+        _("Recurrence Type"),
+        max_length=20,
+        choices=RecurrenceType.choices,
+        default=RecurrenceType.WEEKLY,
+    )
+    weekdays = models.JSONField(
+        _("Weekdays"),
+        default=list,
+        blank=True,
+        help_text=_("List of weekday numbers (0=Monday, 6=Sunday) for weekly patterns"),
+    )
+    day_of_month = models.PositiveIntegerField(
+        _("Day of Month"),
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1)],
+        help_text=_("Day of month (1-31) for monthly patterns"),
+    )
+    
+    # Date range
+    pattern_start_date = models.DateField(_("Pattern Start Date"))
+    pattern_end_date = models.DateField(
+        _("Pattern End Date"),
+        null=True,
+        blank=True,
+        help_text=_("Leave blank for no end date"),
+    )
+    
+    # Assignment
+    assigned_employee = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="recurring_shift_patterns",
+        verbose_name=_("Assigned Employee"),
+        null=True,
+        blank=True,
+        help_text=_("Leave blank for unassigned pattern"),
+    )
+    team = models.ForeignKey(
+        "teams.Team",
+        on_delete=models.CASCADE,
+        related_name="recurring_shift_patterns",
+        verbose_name=_("Team"),
+        null=True,
+        blank=True,
+    )
+    
+    # Status
+    is_active = models.BooleanField(_("Is Active"), default=True)
+    last_generated_date = models.DateField(
+        _("Last Generated Date"),
+        null=True,
+        blank=True,
+        help_text=_("Last date shifts were generated for this pattern"),
+    )
+    
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="created_shift_patterns",
+        verbose_name=_("Created By"),
+    )
+
+    class Meta:  # type: ignore[override]
+        verbose_name = _("Recurring Shift Pattern")
+        verbose_name_plural = _("Recurring Shift Patterns")
+        ordering = ["-created"]
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(end_time__gt=models.F("start_time")),
+                name="pattern_end_after_start",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.get_recurrence_type_display()})"
+
+    def get_absolute_url(self):
+        return reverse("shifts:pattern_detail", kwargs={"pk": self.pk})
+
+
+# Advanced Approval Models
+
+class SwapApprovalRule(TimeStampedModel):
+    """
+    Configurable rules for swap request approvals.
+    
+    Allows flexible approval workflows with:
+    - Priority-based rule matching
+    - Auto-approval criteria
+    - Multi-level manual approval requirements
+    - Delegation support
+    - Usage limits
+    """
+    
+    class Priority(models.IntegerChoices):
+        LOWEST = 1, _("Lowest")
+        LOW = 2, _("Low")
+        MEDIUM = 3, _("Medium")
+        HIGH = 4, _("High")
+        HIGHEST = 5, _("Highest")
+    
+    # Basic Information
+    name = models.CharField(_("Rule Name"), max_length=200)
+    description = models.TextField(_("Description"), blank=True)
+    priority = models.IntegerField(
+        _("Priority"),
+        choices=Priority.choices,
+        default=Priority.MEDIUM,
+        help_text=_("Higher priority rules are evaluated first"),
+    )
+    is_active = models.BooleanField(_("Is Active"), default=True)
+    
+    # Applicability Conditions
+    applies_to_shift_types = models.JSONField(
+        _("Applies to Shift Types"),
+        default=list,
+        blank=True,
+        help_text=_("List of shift types this rule applies to. Empty means all types."),
+    )
+    
+    # Auto-Approval Settings
+    auto_approve_enabled = models.BooleanField(
+        _("Enable Auto-Approval"),
+        default=False,
+        help_text=_("If true, requests meeting criteria will be auto-approved"),
+    )
+    auto_approve_same_shift_type = models.BooleanField(
+        _("Require Same Shift Type"),
+        default=True,
+        help_text=_("Auto-approve only if both shifts are the same type"),
+    )
+    auto_approve_max_advance_hours = models.IntegerField(
+        _("Maximum Advance Hours"),
+        null=True,
+        blank=True,
+        help_text=_("Maximum hours in advance the swap can be requested"),
+    )
+    auto_approve_min_seniority_months = models.IntegerField(
+        _("Minimum Seniority (Months)"),
+        null=True,
+        blank=True,
+        help_text=_("Minimum months of employment required for both employees"),
+    )
+    auto_approve_skills_match_required = models.BooleanField(
+        _("Require Skills Match"),
+        default=False,
+        help_text=_("Auto-approve only if employees have compatible skills"),
+    )
+    
+    # Manual Approval Requirements
+    requires_manager_approval = models.BooleanField(
+        _("Requires Manager Approval"),
+        default=True,
+        help_text=_("Requires approval from a manager"),
+    )
+    requires_admin_approval = models.BooleanField(
+        _("Requires Admin Approval"),
+        default=False,
+        help_text=_("Requires approval from an administrator"),
+    )
+    approval_levels_required = models.IntegerField(
+        _("Approval Levels Required"),
+        default=1,
+        validators=[MinValueValidator(1)],
+        help_text=_("Number of approval levels required (1-5)"),
+    )
+    
+    # Delegation Settings
+    allow_delegation = models.BooleanField(
+        _("Allow Delegation"),
+        default=True,
+        help_text=_("Allow approvers to delegate their approval authority"),
+    )
+    
+    # Usage Limits
+    max_swaps_per_month_per_employee = models.IntegerField(
+        _("Max Swaps Per Month Per Employee"),
+        null=True,
+        blank=True,
+        help_text=_("Maximum number of swaps an employee can request per month"),
+    )
+    
+    # Notifications
+    notify_on_auto_approval = models.BooleanField(
+        _("Notify on Auto-Approval"),
+        default=True,
+        help_text=_("Send notification when a request is auto-approved"),
+    )
+    
+    class Meta:  # type: ignore[override]
+        verbose_name = _("Swap Approval Rule")
+        verbose_name_plural = _("Swap Approval Rules")
+        ordering = ["-priority", "name"]
+    
+    def __str__(self):
+        return f"{self.name} (Priority: {self.get_priority_display()})"
+
+
+class SwapApprovalChain(TimeStampedModel):
+    """
+    Tracks the approval chain for a swap request.
+    
+    Supports multi-level approval workflows where each level must be
+    approved sequentially before the swap is executed.
+    """
+    
+    class Status(models.TextChoices):
+        PENDING = "pending", _("Pending")
+        APPROVED = "approved", _("Approved")
+        REJECTED = "rejected", _("Rejected")
+        SKIPPED = "skipped", _("Skipped")
+        DELEGATED = "delegated", _("Delegated")
+    
+    swap_request = models.ForeignKey(
+        "SwapRequest",
+        on_delete=models.CASCADE,
+        related_name="approval_chain",
+        verbose_name=_("Swap Request"),
+    )
+    approval_rule = models.ForeignKey(
+        "SwapApprovalRule",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="approval_chains",
+        verbose_name=_("Approval Rule"),
+    )
+    level = models.IntegerField(
+        _("Approval Level"),
+        help_text=_("Sequential level in the approval chain (1, 2, 3...)"),
+    )
+    approver = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="approval_tasks",
+        verbose_name=_("Approver"),
+    )
+    status = models.CharField(
+        _("Status"),
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+    )
+    decision_datetime = models.DateTimeField(
+        _("Decision DateTime"),
+        null=True,
+        blank=True,
+    )
+    decision_notes = models.TextField(_("Decision Notes"), blank=True)
+    delegated_to = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="delegated_approvals",
+        verbose_name=_("Delegated To"),
+    )
+    auto_approved = models.BooleanField(
+        _("Auto-Approved"),
+        default=False,
+        help_text=_("Whether this was auto-approved by the system"),
+    )
+    
+    class Meta:  # type: ignore[override]
+        verbose_name = _("Swap Approval Chain")
+        verbose_name_plural = _("Swap Approval Chains")
+        ordering = ["swap_request", "level"]
+        unique_together = [["swap_request", "level"]]
+    
+    def __str__(self):
+        return f"{self.swap_request} - Level {self.level} ({self.get_status_display()})"
+    
+    def approve(self, decision_notes: str = ""):
+        """Mark this approval step as approved."""
+        from django.utils import timezone
+        self.status = self.Status.APPROVED
+        self.decision_datetime = timezone.now()
+        self.decision_notes = decision_notes
+        self.save()
+    
+    def reject(self, decision_notes: str = ""):
+        """Mark this approval step as rejected."""
+        from django.utils import timezone
+        self.status = self.Status.REJECTED
+        self.decision_datetime = timezone.now()
+        self.decision_notes = decision_notes
+        self.save()
+    
+    def delegate(self, user, notes: str = ""):
+        """
+        Delegate this approval to another user.
+        Creates a new approval chain entry for the delegate.
+        """
+        from django.utils import timezone
+        self.status = self.Status.DELEGATED
+        self.delegated_to = user
+        self.decision_datetime = timezone.now()
+        self.decision_notes = notes
+        self.save()
+        
+        # Create new chain entry for delegate
+        new_step = SwapApprovalChain.objects.create(
+            swap_request=self.swap_request,
+            approval_rule=self.approval_rule,
+            level=self.level,
+            approver=user,
+            status=self.Status.PENDING,
+        )
+        return new_step
+
+
+class ApprovalDelegation(TimeStampedModel):
+    """
+    Manages approval delegation relationships.
+    
+    Allows approvers to temporarily delegate their approval authority
+    to another user for a specified time period.
+    """
+    
+    delegator = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="delegations_granted",
+        verbose_name=_("Delegator"),
+    )
+    delegate = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="delegations_received",
+        verbose_name=_("Delegate"),
+    )
+    start_date = models.DateField(_("Start Date"))
+    end_date = models.DateField(
+        _("End Date"),
+        null=True,
+        blank=True,
+        help_text=_("Leave blank for indefinite delegation"),
+    )
+    is_active = models.BooleanField(_("Is Active"), default=True)
+    reason = models.TextField(_("Reason"), blank=True)
+    
+    class Meta:  # type: ignore[override]
+        verbose_name = _("Approval Delegation")
+        verbose_name_plural = _("Approval Delegations")
+        ordering = ["-start_date"]
+    
+    def __str__(self):
+        return f"{self.delegator} → {self.delegate} ({self.start_date})"
+    
+    @property
+    def is_currently_active(self) -> bool:
+        """Check if delegation is currently active based on dates."""
+        from datetime import date
+        if not self.is_active:
+            return False
+        today = date.today()
+        if self.start_date > today:
+            return False
+        if self.end_date and self.end_date < today:
+            return False
+        return True
+
+
+class SwapApprovalAudit(TimeStampedModel):
+    """
+    Audit trail for swap approval actions.
+    
+    Records all actions taken on swap requests for compliance and debugging.
+    """
+    
+    class Action(models.TextChoices):
+        CREATED = "created", _("Created")
+        APPROVED = "approved", _("Approved")
+        REJECTED = "rejected", _("Rejected")
+        CANCELLED = "cancelled", _("Cancelled")
+        DELEGATED = "delegated", _("Delegated")
+        AUTO_APPROVED = "auto_approved", _("Auto-Approved")
+        RULE_APPLIED = "rule_applied", _("Rule Applied")
+        ESCALATED = "escalated", _("Escalated")
+    
+    swap_request = models.ForeignKey(
+        "SwapRequest",
+        on_delete=models.CASCADE,
+        related_name="audit_trail",
+        verbose_name=_("Swap Request"),
+    )
+    action = models.CharField(
+        _("Action"),
+        max_length=20,
+        choices=Action.choices,
+    )
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="swap_audit_actions",
+        verbose_name=_("Actor"),
+        help_text=_("User who performed the action (null for system actions)"),
+    )
+    approval_chain = models.ForeignKey(
+        "SwapApprovalChain",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="audit_entries",
+        verbose_name=_("Approval Chain"),
+    )
+    approval_rule = models.ForeignKey(
+        "SwapApprovalRule",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="audit_entries",
+        verbose_name=_("Approval Rule"),
+    )
+    notes = models.TextField(_("Notes"), blank=True)
+    metadata = models.JSONField(
+        _("Metadata"),
+        default=dict,
+        blank=True,
+        help_text=_("Additional structured data about the action"),
+    )
+    
+    class Meta:  # type: ignore[override]
+        verbose_name = _("Swap Approval Audit")
+        verbose_name_plural = _("Swap Approval Audits")
+        ordering = ["-created"]
+    
+    def __str__(self):
+        actor_name = self.actor if self.actor else "System"
+        return f"{self.get_action_display()} by {actor_name} at {self.created}"

@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  django:
+    build:
+      context: .
+      dockerfile: Dockerfile.django
+    container_name: team_planner_django
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite:////app/db.sqlite3
+      - DJANGO_SETTINGS_MODULE=config.settings.local
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - .:/app
+      - ./db.sqlite3:/app/db.sqlite3
+    command: >
+      bash -c "
+        python manage.py migrate &&
+        python manage.py shell -c 'from team_planner.users.models import User; User.objects.filter(username=\"admin\").exists() or User.objects.create_superuser(\"admin\", \"admin@example.com\", \"admin123\")' &&
+        python manage.py runserver 0.0.0.0:8000
+      "
+    working_dir: /app
+    networks:
+      - team_planner_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: team_planner_frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - VITE_API_URL=http://django:8000
+    depends_on:
+      - django
+    networks:
+      - team_planner_network
+
+networks:
+  team_planner_network:
+    driver: bridge
+
