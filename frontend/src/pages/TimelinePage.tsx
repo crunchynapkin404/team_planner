@@ -62,6 +62,9 @@ import {
   Save,
   BookmarkBorder,
   Bookmark,
+  Warning,
+  Error,
+  Info,
 } from '@mui/icons-material';
 import { apiClient } from '../services/apiClient';
 import { API_CONFIG } from '../config/api';
@@ -104,6 +107,16 @@ const TimelinePage: React.FC = () => {
   // Keyboard navigation state
   const [focusedCell, setFocusedCell] = useState<{ row: number; col: number } | null>(null);
   const [keyboardNavEnabled, setKeyboardNavEnabled] = useState(false);
+
+  // Conflict detection state
+  const [conflicts, setConflicts] = useState<Record<number, Array<{
+    type: string;
+    severity: string;
+    message: string;
+    details: any;
+    suggestion: string;
+  }>>>({});
+  const [showConflicts, setShowConflicts] = useState(true);
 
   // Fetch recurring leave patterns and generate calendar events
   const fetchRecurringLeavePatterns = async (): Promise<CalendarEvent[]> => {
@@ -342,6 +355,25 @@ const TimelinePage: React.FC = () => {
   };
 
   // Fetch shifts and leave requests from API
+  // Fetch scheduling conflicts
+  const fetchConflicts = async (startDate: Date, endDate: Date) => {
+    try {
+      const response: any = await apiClient.get('/api/shifts/api/conflicts/', {
+        params: {
+          start_date: startDate.toISOString(),
+          end_date: endDate.toISOString(),
+        }
+      });
+      
+      if (response.data && response.data.conflicts) {
+        setConflicts(response.data.conflicts);
+      }
+    } catch (err) {
+      console.error('Error fetching conflicts:', err);
+      // Don't set error state, conflicts are optional
+    }
+  };
+
   const fetchData = async () => {
     setLoading(true);
     setError(null);
@@ -413,6 +445,13 @@ const TimelinePage: React.FC = () => {
       // Use today's date for initial processing
       const today = new Date();
       processTimelineData(shiftsData.events, allLeaveEvents, today);
+      
+      // Fetch conflicts for the current view
+      const conflictStart = new Date();
+      conflictStart.setMonth(conflictStart.getMonth() - 1);
+      const conflictEnd = new Date();
+      conflictEnd.setMonth(conflictEnd.getMonth() + 3);
+      await fetchConflicts(conflictStart, conflictEnd);
     } catch (err) {
       setError('Failed to load data');
       console.error('Error loading data:', err);
@@ -710,6 +749,34 @@ const TimelinePage: React.FC = () => {
       .replace(/_/g, ' ')           // Replace underscores with spaces
       .replace(/-/g, ' ')           // Replace hyphens with spaces
       .replace(/\b\w/g, l => l.toUpperCase()); // Capitalize first letter of each word
+  };
+
+  // Get conflicts for a shift
+  const getShiftConflicts = (shiftId: string): Array<any> => {
+    const numericId = parseInt(shiftId.replace(/\D/g, ''), 10);
+    return conflicts[numericId] || [];
+  };
+
+  // Get severity icon for conflict
+  const getConflictIcon = (severity: string) => {
+    switch (severity) {
+      case 'high':
+        return <Error sx={{ fontSize: 14, color: '#d32f2f' }} />;
+      case 'medium':
+        return <Warning sx={{ fontSize: 14, color: '#ed6c02' }} />;
+      case 'low':
+        return <Info sx={{ fontSize: 14, color: '#0288d1' }} />;
+      default:
+        return null;
+    }
+  };
+
+  // Get highest severity from conflicts
+  const getHighestSeverity = (shiftConflicts: Array<any>): string => {
+    if (shiftConflicts.some(c => c.severity === 'high')) return 'high';
+    if (shiftConflicts.some(c => c.severity === 'medium')) return 'medium';
+    if (shiftConflicts.some(c => c.severity === 'low')) return 'low';
+    return '';
   };
 
   // Handle view mode change
@@ -1121,6 +1188,17 @@ const TimelinePage: React.FC = () => {
             Advanced
           </Button>
 
+          {/* Show Conflicts Toggle */}
+          <Button
+            variant={showConflicts ? 'contained' : 'outlined'}
+            startIcon={showConflicts ? <Warning /> : <Warning />}
+            onClick={() => setShowConflicts(!showConflicts)}
+            size="small"
+            color={showConflicts ? 'warning' : 'inherit'}
+          >
+            {showConflicts ? 'Hide' : 'Show'} Conflicts
+          </Button>
+
           {/* Clear All Filters */}
           {(searchQuery || statusFilter.length > 0 || shiftTypeFilter.length > 0 || showMyScheduleOnly || teamFilter.length > 0 || employeeFilter.length > 0 || dateRangeFilter.start || dateRangeFilter.end) && (
             <Button
@@ -1360,31 +1438,63 @@ const TimelinePage: React.FC = () => {
                                   ? `${formatShiftType(shiftType)} (${count}x)`
                                   : `${formatShiftType(shiftType)}`;
                                 
+                                // Get conflicts for these shifts
+                                const allShiftConflicts = shifts.flatMap(s => getShiftConflicts(s.id));
+                                const hasConflicts = showConflicts && allShiftConflicts.length > 0;
+                                const highestSeverity = hasConflicts ? getHighestSeverity(allShiftConflicts) : '';
+                                
+                                // Build conflict tooltip
+                                const conflictTooltip = hasConflicts 
+                                  ? `⚠️ ${allShiftConflicts.length} conflict${allShiftConflicts.length > 1 ? 's' : ''}:\n${allShiftConflicts.map(c => `• ${c.message}`).join('\n')}`
+                                  : '';
+                                
                                 return (
-                                  <Chip
+                                  <Tooltip 
                                     key={shiftType}
-                                    label={label}
-                                    size="small"
-                                    clickable
-                                    onClick={() => handleChipClick(shifts)}
-                                    sx={{
-                                      backgroundColor: getShiftColor(shiftType),
-                                      color: 'white',
-                                      fontSize: '0.7rem',
-                                      height: 'auto',
-                                      cursor: 'pointer',
-                                      '&:hover': {
-                                        opacity: 0.8,
-                                        transform: 'scale(1.02)',
-                                      },
-                                      '& .MuiChip-label': {
-                                        whiteSpace: 'normal',
-                                        lineHeight: 1.2,
-                                        padding: '2px 4px',
-                                        textAlign: 'center'
+                                    title={conflictTooltip || label}
+                                    arrow
+                                  >
+                                    <Chip
+                                      label={
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                          {label}
+                                          {hasConflicts && getConflictIcon(highestSeverity)}
+                                        </Box>
                                       }
-                                    }}
-                                  />
+                                      size="small"
+                                      clickable
+                                      onClick={() => handleChipClick(shifts)}
+                                      sx={{
+                                        backgroundColor: getShiftColor(shiftType),
+                                        color: 'white',
+                                        fontSize: '0.7rem',
+                                        height: 'auto',
+                                        cursor: 'pointer',
+                                        position: 'relative',
+                                        // Add conflict border/outline
+                                        ...(hasConflicts && {
+                                          outline: `2px solid ${
+                                            highestSeverity === 'high' ? '#d32f2f' :
+                                            highestSeverity === 'medium' ? '#ed6c02' :
+                                            '#0288d1'
+                                          }`,
+                                          outlineOffset: '1px',
+                                        }),
+                                        '&:hover': {
+                                          opacity: 0.8,
+                                          transform: 'scale(1.02)',
+                                        },
+                                        '& .MuiChip-label': {
+                                          whiteSpace: 'normal',
+                                          lineHeight: 1.2,
+                                          padding: '2px 4px',
+                                          textAlign: 'center',
+                                          display: 'flex',
+                                          alignItems: 'center'
+                                        }
+                                      }}
+                                    />
+                                  </Tooltip>
                                 );
                               })}
                               
@@ -1904,6 +2014,32 @@ const TimelinePage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Conflict Legend */}
+      {showConflicts && Object.keys(conflicts).length > 0 && (
+        <Box sx={{ mt: 2, p: 2, bgcolor: '#f5f5f5', borderRadius: 1 }}>
+          <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+            Conflict Legend:
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <Error sx={{ fontSize: 16, color: '#d32f2f' }} />
+              <Typography variant="caption">High Severity (Double-booking, Critical Leave)</Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <Warning sx={{ fontSize: 16, color: '#ed6c02' }} />
+              <Typography variant="caption">Medium Severity (Over-scheduled Weekly, Skill Mismatch)</Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <Info sx={{ fontSize: 16, color: '#0288d1' }} />
+              <Typography variant="caption">Low Severity (Over-scheduled Monthly)</Typography>
+            </Box>
+          </Box>
+          <Typography variant="caption" sx={{ mt: 1, display: 'block', color: 'text.secondary' }}>
+            Hover over shifts with conflict indicators to see details and suggestions.
+          </Typography>
+        </Box>
+      )}
 
       {/* Advanced Filter Drawer */}
       <Drawer
