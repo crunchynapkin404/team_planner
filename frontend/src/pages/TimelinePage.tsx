@@ -368,7 +368,7 @@ const TimelinePage: React.FC = () => {
   // Fetch scheduling conflicts
   const fetchConflicts = async (startDate: Date, endDate: Date) => {
     try {
-      const response: any = await apiClient.get('/api/shifts/api/conflicts/', {
+      const response: any = await apiClient.get('/shifts/api/conflicts/', {
         params: {
           start_date: startDate.toISOString(),
           end_date: endDate.toISOString(),
@@ -387,7 +387,7 @@ const TimelinePage: React.FC = () => {
   // Fetch employee availability
   const fetchAvailability = async (startDate: Date, endDate: Date) => {
     try {
-      const response: any = await apiClient.get('/api/shifts/api/availability/', {
+      const response: any = await apiClient.get('/shifts/api/availability/', {
         params: {
           start_date: startDate.toISOString(),
           end_date: endDate.toISOString(),
@@ -1275,7 +1275,7 @@ const TimelinePage: React.FC = () => {
       ));
 
       // Update via API
-      await apiClient.patch(`/api/shifts/${shift.id}/`, {
+      await apiClient.patch(`/shifts/api/shifts/${shift.id}/`, {
         start_time: newStart.toISOString(),
         end_time: newEnd.toISOString(),
         assigned_employee: parseInt(engineerId),
