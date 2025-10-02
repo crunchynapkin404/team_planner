@@ -42,6 +42,9 @@ import {
   AccessTime,
   Person,
   CalendarMonth,
+  EventBusy,
+  PlaylistAdd,
+  Settings,
 } from '@mui/icons-material';
 import { apiClient } from '../services/apiClient';
 import { API_CONFIG } from '../config/api';
@@ -1179,22 +1182,141 @@ const TimelinePage: React.FC = () => {
             </TableContainer>
           )}
 
+          {/* Empty State - No Shifts at All */}
           {!loading && !error && timelineData.length === 0 && (
-            <Box sx={{ textAlign: 'center', p: 4 }}>
-              <Typography variant="body1" color="text.secondary">
-                No shifts found. Create some shifts using the Orchestrator to see them here.
-              </Typography>
+            <Box sx={{ 
+              textAlign: 'center', 
+              py: 8, 
+              px: 4,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 3
+            }}>
+              <CalendarMonth 
+                sx={{ 
+                  fontSize: 80, 
+                  color: 'text.disabled',
+                  opacity: 0.5 
+                }} 
+              />
+              <Box>
+                <Typography variant="h6" color="text.secondary" gutterBottom>
+                  No Shifts Found
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                  Get started by creating your first shift schedule
+                </Typography>
+              </Box>
+              
+              <Box sx={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                gap: 2,
+                width: '100%',
+                maxWidth: 400 
+              }}>
+                <Paper 
+                  sx={{ 
+                    p: 2, 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: 2,
+                    cursor: 'pointer',
+                    '&:hover': { backgroundColor: 'action.hover' }
+                  }}
+                  onClick={() => window.location.href = '/orchestrator'}
+                >
+                  <Settings color="primary" />
+                  <Box sx={{ textAlign: 'left', flex: 1 }}>
+                    <Typography variant="subtitle2">
+                      Run the Orchestrator
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Generate shifts automatically based on your rules
+                    </Typography>
+                  </Box>
+                </Paper>
+
+                <Paper 
+                  sx={{ 
+                    p: 2, 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: 2,
+                    cursor: 'pointer',
+                    '&:hover': { backgroundColor: 'action.hover' }
+                  }}
+                  onClick={() => window.location.href = '/calendar'}
+                >
+                  <PlaylistAdd color="primary" />
+                  <Box sx={{ textAlign: 'left', flex: 1 }}>
+                    <Typography variant="subtitle2">
+                      Create Shifts Manually
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Add individual shifts from the calendar view
+                    </Typography>
+                  </Box>
+                </Paper>
+              </Box>
             </Box>
           )}
 
+          {/* Empty State - No Matches for Filters */}
           {!loading && !error && timelineData.length > 0 && getFilteredTimelineData().length === 0 && (
-            <Box sx={{ textAlign: 'center', p: 4 }}>
-              <Typography variant="body1" color="text.secondary" gutterBottom>
-                No shifts match your current filters.
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Try adjusting your filters or click "Clear All" to reset.
-              </Typography>
+            <Box sx={{ 
+              textAlign: 'center', 
+              py: 8, 
+              px: 4,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 3
+            }}>
+              <EventBusy 
+                sx={{ 
+                  fontSize: 80, 
+                  color: 'warning.main',
+                  opacity: 0.6 
+                }} 
+              />
+              <Box>
+                <Typography variant="h6" color="text.secondary" gutterBottom>
+                  No Shifts Match Your Filters
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Try adjusting your search or filter criteria
+                </Typography>
+              </Box>
+              
+              <Box sx={{ 
+                display: 'flex', 
+                gap: 2,
+                flexWrap: 'wrap',
+                justifyContent: 'center'
+              }}>
+                {(searchQuery || statusFilter.length > 0 || shiftTypeFilter.length > 0 || showMyScheduleOnly) && (
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={() => {
+                      setSearchQuery('');
+                      setStatusFilter([]);
+                      setShiftTypeFilter([]);
+                      setShowMyScheduleOnly(false);
+                    }}
+                  >
+                    Clear All Filters
+                  </Button>
+                )}
+              </Box>
+
+              <Paper sx={{ p: 2, mt: 2, backgroundColor: 'info.lighter' }}>
+                <Typography variant="caption" color="text.secondary">
+                  💡 <strong>Tip:</strong> You have {timelineData.length} engineers with shifts in this date range
+                </Typography>
+              </Paper>
             </Box>
           )}
         </CardContent>
