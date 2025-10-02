@@ -73,6 +73,7 @@ import { formatDate } from '../utils/dateUtils';
 
 interface TimelineData {
   engineer: string;
+  engineerId: string;
   shifts: CalendarEvent[];
   leaves: CalendarEvent[];
 }
@@ -117,6 +118,10 @@ const TimelinePage: React.FC = () => {
     suggestion: string;
   }>>>({});
   const [showConflicts, setShowConflicts] = useState(true);
+
+  // Availability overlay state
+  const [availability, setAvailability] = useState<Record<string, Record<string, string>>>({});
+  const [showAvailability, setShowAvailability] = useState(false);
 
   // Fetch recurring leave patterns and generate calendar events
   const fetchRecurringLeavePatterns = async (): Promise<CalendarEvent[]> => {
@@ -374,6 +379,25 @@ const TimelinePage: React.FC = () => {
     }
   };
 
+  // Fetch employee availability
+  const fetchAvailability = async (startDate: Date, endDate: Date) => {
+    try {
+      const response: any = await apiClient.get('/api/shifts/api/availability/', {
+        params: {
+          start_date: startDate.toISOString(),
+          end_date: endDate.toISOString(),
+        }
+      });
+      
+      if (response.data && response.data.availability) {
+        setAvailability(response.data.availability);
+      }
+    } catch (err) {
+      console.error('Error fetching availability:', err);
+      // Don't set error state, availability is optional
+    }
+  };
+
   const fetchData = async () => {
     setLoading(true);
     setError(null);
@@ -446,12 +470,15 @@ const TimelinePage: React.FC = () => {
       const today = new Date();
       processTimelineData(shiftsData.events, allLeaveEvents, today);
       
-      // Fetch conflicts for the current view
-      const conflictStart = new Date();
-      conflictStart.setMonth(conflictStart.getMonth() - 1);
-      const conflictEnd = new Date();
-      conflictEnd.setMonth(conflictEnd.getMonth() + 3);
-      await fetchConflicts(conflictStart, conflictEnd);
+      // Fetch conflicts and availability for the current view
+      const dataStart = new Date();
+      dataStart.setMonth(dataStart.getMonth() - 1);
+      const dataEnd = new Date();
+      dataEnd.setMonth(dataEnd.getMonth() + 3);
+      await Promise.all([
+        fetchConflicts(dataStart, dataEnd),
+        fetchAvailability(dataStart, dataEnd)
+      ]);
     } catch (err) {
       setError('Failed to load data');
       console.error('Error loading data:', err);
@@ -655,11 +682,20 @@ const TimelinePage: React.FC = () => {
 
     // Convert to timeline data
     const timeline: TimelineData[] = Array.from(allEngineers)
-      .map((engineer) => ({
-        engineer,
-        shifts: shiftGroups[engineer] || [],
-        leaves: leaveGroups[engineer] || []
-      }))
+      .map((engineer) => {
+        // Get employeeId from first shift or leave for this engineer
+        const engineerId = 
+          (shiftGroups[engineer]?.[0]?.extendedProps?.engineerId) ||
+          (leaveGroups[engineer]?.[0]?.extendedProps?.engineerId) ||
+          '';
+        
+        return {
+          engineer,
+          engineerId,
+          shifts: shiftGroups[engineer] || [],
+          leaves: leaveGroups[engineer] || []
+        };
+      })
       .sort((a, b) => a.engineer.localeCompare(b.engineer));
 
     setTimelineData(timeline);
@@ -777,6 +813,76 @@ const TimelinePage: React.FC = () => {
     if (shiftConflicts.some(c => c.severity === 'medium')) return 'medium';
     if (shiftConflicts.some(c => c.severity === 'low')) return 'low';
     return '';
+  };
+
+  // Get availability status for employee on date
+  const getAvailabilityStatus = (engineerId: string, date: Date): string => {
+    const dateStr = date.toISOString().split('T')[0];
+    return availability[engineerId]?.[dateStr] || 'unknown';
+  };
+
+  // Get availability color
+  const getAvailabilityColor = (status: string): string => {
+    switch (status) {
+      case 'available':
+        return 'rgba(76, 175, 80, 0.15)';  // Light green
+      case 'partial':
+        return 'rgba(255, 193, 7, 0.15)';   // Light yellow
+      case 'unavailable':
+        return 'rgba(244, 67, 54, 0.15)';   // Light red
+      default:
+        return 'transparent';
+    }
+  };
+
+  // Get availability indicator
+  const getAvailabilityIndicator = (status: string) => {
+    switch (status) {
+      case 'available':
+        return (
+          <Box
+            sx={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              bgcolor: '#4caf50',
+              position: 'absolute',
+              top: 4,
+              right: 4,
+            }}
+          />
+        );
+      case 'partial':
+        return (
+          <Box
+            sx={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              bgcolor: '#ffc107',
+              position: 'absolute',
+              top: 4,
+              right: 4,
+            }}
+          />
+        );
+      case 'unavailable':
+        return (
+          <Box
+            sx={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              bgcolor: '#f44336',
+              position: 'absolute',
+              top: 4,
+              right: 4,
+            }}
+          />
+        );
+      default:
+        return null;
+    }
   };
 
   // Handle view mode change
@@ -1199,6 +1305,17 @@ const TimelinePage: React.FC = () => {
             {showConflicts ? 'Hide' : 'Show'} Conflicts
           </Button>
 
+          {/* Show Availability Toggle */}
+          <Button
+            variant={showAvailability ? 'contained' : 'outlined'}
+            startIcon={<Info />}
+            onClick={() => setShowAvailability(!showAvailability)}
+            size="small"
+            color={showAvailability ? 'info' : 'inherit'}
+          >
+            {showAvailability ? 'Hide' : 'Show'} Availability
+          </Button>
+
           {/* Clear All Filters */}
           {(searchQuery || statusFilter.length > 0 || shiftTypeFilter.length > 0 || showMyScheduleOnly || teamFilter.length > 0 || employeeFilter.length > 0 || dateRangeFilter.start || dateRangeFilter.end) && (
             <Button
@@ -1407,12 +1524,17 @@ const TimelinePage: React.FC = () => {
                         const isToday = date.toDateString() === new Date().toDateString();
                         const isFocused = keyboardNavEnabled && focusedCell?.row === rowIndex && focusedCell?.col === colIndex;
                         
+                        // Get availability status
+                        const availStatus = showAvailability ? getAvailabilityStatus(engineerData.engineerId, date) : 'unknown';
+                        const availColor = showAvailability ? getAvailabilityColor(availStatus) : 'transparent';
+                        
                         return (
                           <TableCell 
                             key={date.toISOString()}
                             sx={{ 
                               p: 0.5,
                               verticalAlign: 'top',
+                              position: 'relative',
                               backgroundColor: isToday 
                                 ? (hasEvents ? '#e3f2fd' : '#f3f9ff')
                                 : (hasEvents ? '#fafafa' : 'transparent'),
@@ -1428,7 +1550,26 @@ const TimelinePage: React.FC = () => {
                               })
                             }}
                           >
-                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                            {/* Availability overlay */}
+                            {showAvailability && availStatus !== 'unknown' && (
+                              <Box
+                                sx={{
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
+                                  right: 0,
+                                  bottom: 0,
+                                  backgroundColor: availColor,
+                                  pointerEvents: 'none',
+                                  zIndex: 1
+                                }}
+                              />
+                            )}
+                            
+                            {/* Availability indicator dot */}
+                            {showAvailability && availStatus !== 'unknown' && getAvailabilityIndicator(availStatus)}
+                            
+                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, position: 'relative', zIndex: 2 }}>
                               {/* Render shifts */}
                               {Object.entries(groupedShifts).map(([shiftType, shifts]) => {
                                 // Create label with count if multiple shifts
@@ -2037,6 +2178,32 @@ const TimelinePage: React.FC = () => {
           </Box>
           <Typography variant="caption" sx={{ mt: 1, display: 'block', color: 'text.secondary' }}>
             Hover over shifts with conflict indicators to see details and suggestions.
+          </Typography>
+        </Box>
+      )}
+
+      {/* Availability Legend */}
+      {showAvailability && (
+        <Box sx={{ mt: 2, p: 2, bgcolor: '#f5f5f5', borderRadius: 1 }}>
+          <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+            Availability Legend:
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: '#4caf50' }} />
+              <Typography variant="caption">Available (Under hour limits, no leave)</Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: '#ffc107' }} />
+              <Typography variant="caption">Partial (Near limits or pending leave)</Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: '#f44336' }} />
+              <Typography variant="caption">Unavailable (On leave or at capacity)</Typography>
+            </Box>
+          </Box>
+          <Typography variant="caption" sx={{ mt: 1, display: 'block', color: 'text.secondary' }}>
+            Color overlay and dot indicator show employee availability for each day.
           </Typography>
         </Box>
       )}
