@@ -29,12 +29,18 @@ import {
   ListItem,
   ListItemText,
   Divider,
+  TextField,
+  InputAdornment,
+  Tooltip,
 } from '@mui/material';
 import {
   ChevronLeft,
   ChevronRight,
   Today,
   Close,
+  Search,
+  Clear,
+  FilterList,
 } from '@mui/icons-material';
 import { apiClient } from '../services/apiClient';
 import { API_CONFIG } from '../config/api';
@@ -58,6 +64,12 @@ const TimelinePage: React.FC = () => {
   const [allLeavesData, setAllLeavesData] = useState<CalendarEvent[]>([]);
   const [selectedShifts, setSelectedShifts] = useState<CalendarEvent[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
+  
+  // Filter states
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [shiftTypeFilter, setShiftTypeFilter] = useState<string[]>([]);
+  const [showMyScheduleOnly, setShowMyScheduleOnly] = useState(false);
 
     // Fetch recurring leave patterns and generate calendar events
   const fetchRecurringLeavePatterns = async (): Promise<CalendarEvent[]> => {
@@ -427,6 +439,63 @@ const TimelinePage: React.FC = () => {
     return dates;
   };
 
+  // Get current user for "My Schedule" filter
+  const getCurrentUser = () => {
+    try {
+      const userStr = localStorage.getItem('user');
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        return user.username || user.email || '';
+      }
+    } catch (error) {
+      console.error('Error getting current user:', error);
+    }
+    return '';
+  };
+
+  // Filter timeline data based on search and filters
+  const getFilteredTimelineData = () => {
+    let filtered = [...timelineData];
+    
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(td => 
+        td.engineer.toLowerCase().includes(query)
+      );
+    }
+    
+    // Apply "My Schedule" filter
+    if (showMyScheduleOnly) {
+      const currentUser = getCurrentUser();
+      filtered = filtered.filter(td => 
+        td.engineer.toLowerCase() === currentUser.toLowerCase()
+      );
+    }
+    
+    // Apply status filter (filter shifts within each engineer's data)
+    if (statusFilter.length > 0) {
+      filtered = filtered.map(td => ({
+        ...td,
+        shifts: td.shifts.filter(shift => 
+          statusFilter.includes(shift.extendedProps?.status || 'scheduled')
+        )
+      })).filter(td => td.shifts.length > 0 || td.leaves.length > 0);
+    }
+    
+    // Apply shift type filter
+    if (shiftTypeFilter.length > 0) {
+      filtered = filtered.map(td => ({
+        ...td,
+        shifts: td.shifts.filter(shift => 
+          shiftTypeFilter.includes(shift.extendedProps?.shiftType || '')
+        )
+      })).filter(td => td.shifts.length > 0 || td.leaves.length > 0);
+    }
+    
+    return filtered;
+  };
+
   // Process shifts and leaves into timeline format
   const processTimelineData = (shiftsData: CalendarEvent[], leavesData: CalendarEvent[], baseDate?: Date) => {
     // Group shifts by engineer
@@ -723,9 +792,112 @@ const TimelinePage: React.FC = () => {
           {/* Stats */}
           <Box sx={{ ml: 'auto' }}>
             <Typography variant="body2" color="text.secondary">
-              {timelineData.length} engineers, {timelineData.reduce((sum, td) => sum + td.shifts.length, 0)} shifts
+              {getFilteredTimelineData().length} engineers, {getFilteredTimelineData().reduce((sum, td) => sum + td.shifts.length, 0)} shifts
             </Typography>
           </Box>
+        </Box>
+      </Paper>
+
+      {/* Filters */}
+      <Paper sx={{ p: 2, mb: 3 }}>
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Search Box */}
+          <TextField
+            size="small"
+            placeholder="Search engineers..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Search fontSize="small" />
+                </InputAdornment>
+              ),
+              endAdornment: searchQuery && (
+                <InputAdornment position="end">
+                  <IconButton size="small" onClick={() => setSearchQuery('')}>
+                    <Clear fontSize="small" />
+                  </IconButton>
+                </InputAdornment>
+              ),
+            }}
+            sx={{ minWidth: 250 }}
+          />
+
+          {/* My Schedule Toggle */}
+          <Tooltip title={showMyScheduleOnly ? 'Show all schedules' : 'Show only my shifts'}>
+            <Button
+              size="small"
+              variant={showMyScheduleOnly ? 'contained' : 'outlined'}
+              onClick={() => setShowMyScheduleOnly(!showMyScheduleOnly)}
+            >
+              {showMyScheduleOnly ? '✓ My Schedule' : 'My Schedule'}
+            </Button>
+          </Tooltip>
+
+          {/* Status Filters */}
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+            <FilterList fontSize="small" />
+            <Chip
+              label="All Status"
+              size="small"
+              color={statusFilter.length === 0 ? 'primary' : 'default'}
+              onClick={() => setStatusFilter([])}
+            />
+            <Chip
+              label="Confirmed"
+              size="small"
+              color={statusFilter.includes('confirmed') ? 'success' : 'default'}
+              onClick={() => {
+                if (statusFilter.includes('confirmed')) {
+                  setStatusFilter(statusFilter.filter(s => s !== 'confirmed'));
+                } else {
+                  setStatusFilter([...statusFilter, 'confirmed']);
+                }
+              }}
+            />
+            <Chip
+              label="Scheduled"
+              size="small"
+              color={statusFilter.includes('scheduled') ? 'primary' : 'default'}
+              onClick={() => {
+                if (statusFilter.includes('scheduled')) {
+                  setStatusFilter(statusFilter.filter(s => s !== 'scheduled'));
+                } else {
+                  setStatusFilter([...statusFilter, 'scheduled']);
+                }
+              }}
+            />
+            <Chip
+              label="Cancelled"
+              size="small"
+              color={statusFilter.includes('cancelled') ? 'error' : 'default'}
+              onClick={() => {
+                if (statusFilter.includes('cancelled')) {
+                  setStatusFilter(statusFilter.filter(s => s !== 'cancelled'));
+                } else {
+                  setStatusFilter([...statusFilter, 'cancelled']);
+                }
+              }}
+            />
+          </Box>
+
+          {/* Clear All Filters */}
+          {(searchQuery || statusFilter.length > 0 || shiftTypeFilter.length > 0 || showMyScheduleOnly) && (
+            <Button
+              size="small"
+              variant="text"
+              color="secondary"
+              onClick={() => {
+                setSearchQuery('');
+                setStatusFilter([]);
+                setShiftTypeFilter([]);
+                setShowMyScheduleOnly(false);
+              }}
+            >
+              Clear All
+            </Button>
+          )}
         </Box>
       </Paper>
 
@@ -744,7 +916,7 @@ const TimelinePage: React.FC = () => {
             </Alert>
           )}
 
-          {!loading && !error && timelineData.length > 0 && (
+          {!loading && !error && getFilteredTimelineData().length > 0 && (
             <TableContainer sx={{ pb: 2 }}>
               <Table stickyHeader size="small">
                 <TableHead>
@@ -820,7 +992,7 @@ const TimelinePage: React.FC = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {timelineData.map((engineerData) => (
+                  {getFilteredTimelineData().map((engineerData) => (
                     <TableRow key={engineerData.engineer}>
                       <TableCell sx={{ 
                         fontWeight: 'bold', 
@@ -951,6 +1123,17 @@ const TimelinePage: React.FC = () => {
             <Box sx={{ textAlign: 'center', p: 4 }}>
               <Typography variant="body1" color="text.secondary">
                 No shifts found. Create some shifts using the Orchestrator to see them here.
+              </Typography>
+            </Box>
+          )}
+
+          {!loading && !error && timelineData.length > 0 && getFilteredTimelineData().length === 0 && (
+            <Box sx={{ textAlign: 'center', p: 4 }}>
+              <Typography variant="body1" color="text.secondary" gutterBottom>
+                No shifts match your current filters.
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Try adjusting your filters or click "Clear All" to reset.
               </Typography>
             </Box>
           )}
