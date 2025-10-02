@@ -10,6 +10,7 @@ import {
   Select,
   MenuItem,
   Alert,
+  AlertTitle,
   Paper,
   SelectChangeEvent,
   Table,
@@ -48,6 +49,7 @@ import {
   PlaylistAdd,
   Settings,
   Print,
+  Refresh,
 } from '@mui/icons-material';
 import { apiClient } from '../services/apiClient';
 import { API_CONFIG } from '../config/api';
@@ -1082,7 +1084,24 @@ const TimelinePage: React.FC = () => {
           )}
 
           {error && (
-            <Alert severity="error" sx={{ m: 2 }}>
+            <Alert 
+              severity="error" 
+              sx={{ m: 2 }}
+              action={
+                <Button
+                  color="inherit"
+                  size="small"
+                  startIcon={<Refresh />}
+                  onClick={() => {
+                    setError(null);
+                    fetchData();
+                  }}
+                >
+                  Retry
+                </Button>
+              }
+            >
+              <AlertTitle>Error Loading Timeline</AlertTitle>
               {error}
             </Alert>
           )}
