@@ -8,7 +8,6 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  CircularProgress,
   Alert,
   Paper,
   SelectChangeEvent,
@@ -28,6 +27,7 @@ import {
   TextField,
   InputAdornment,
   Tooltip,
+  Skeleton,
 } from '@mui/material';
 import {
   ChevronLeft,
@@ -906,9 +906,68 @@ const TimelinePage: React.FC = () => {
       <Card>
         <CardContent sx={{ p: 0 }}>
           {loading && (
-            <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-              <CircularProgress />
-            </Box>
+            <TableContainer sx={{ pb: 2 }}>
+              <Table stickyHeader size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ 
+                      minWidth: 150, 
+                      backgroundColor: '#f5f5f5', 
+                      fontWeight: 'bold'
+                    }}>
+                      <Skeleton variant="text" width="60%" />
+                    </TableCell>
+                    {[...Array(viewMode === 'week' ? 7 : viewMode === 'month' ? 30 : 90)].map((_, i) => (
+                      <TableCell 
+                        key={i}
+                        sx={{ 
+                          minWidth: viewMode === 'year' ? 80 : 120, 
+                          backgroundColor: '#f5f5f5',
+                          textAlign: 'center'
+                        }}
+                      >
+                        <Skeleton variant="text" width="80%" sx={{ mx: 'auto' }} />
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {[...Array(8)].map((_, rowIndex) => (
+                    <TableRow key={rowIndex}>
+                      <TableCell sx={{ 
+                        fontWeight: 'bold', 
+                        backgroundColor: '#fafafa'
+                      }}>
+                        <Skeleton variant="text" width="70%" />
+                      </TableCell>
+                      {[...Array(viewMode === 'week' ? 7 : viewMode === 'month' ? 30 : 90)].map((_, colIndex) => (
+                        <TableCell key={colIndex} sx={{ p: 1 }}>
+                          {/* Randomly show skeleton chips (some cells empty, some with 1-2 chips) */}
+                          {Math.random() > 0.6 && (
+                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                              <Skeleton 
+                                variant="rounded" 
+                                width="100%" 
+                                height={24}
+                                sx={{ borderRadius: 2 }}
+                              />
+                              {Math.random() > 0.7 && (
+                                <Skeleton 
+                                  variant="rounded" 
+                                  width="100%" 
+                                  height={24}
+                                  sx={{ borderRadius: 2 }}
+                                />
+                              )}
+                            </Box>
+                          )}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
           )}
 
           {error && (
