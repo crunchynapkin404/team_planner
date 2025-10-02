@@ -75,7 +75,11 @@ const TimelinePage: React.FC = () => {
   const [shiftTypeFilter, setShiftTypeFilter] = useState<string[]>([]);
   const [showMyScheduleOnly, setShowMyScheduleOnly] = useState(false);
 
-    // Fetch recurring leave patterns and generate calendar events
+  // Keyboard navigation state
+  const [focusedCell, setFocusedCell] = useState<{ row: number; col: number } | null>(null);
+  const [keyboardNavEnabled, setKeyboardNavEnabled] = useState(false);
+
+  // Fetch recurring leave patterns and generate calendar events
   const fetchRecurringLeavePatterns = async (): Promise<CalendarEvent[]> => {
     console.log('🔍 Starting fetchRecurringLeavePatterns...');
     try {
@@ -738,6 +742,107 @@ const TimelinePage: React.FC = () => {
     }
   }, [viewMode, currentDate, allShiftsData, allLeavesData]);
 
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const filteredData = getFilteredTimelineData();
+      
+      // Escape key - close dialog or disable keyboard nav
+      if (e.key === 'Escape') {
+        if (dialogOpen) {
+          handleCloseDialog();
+        } else if (keyboardNavEnabled) {
+          setKeyboardNavEnabled(false);
+          setFocusedCell(null);
+        }
+        return;
+      }
+
+      // If dialog is open, Enter should also close it
+      if (dialogOpen && e.key === 'Enter') {
+        handleCloseDialog();
+        return;
+      }
+
+      // Enable keyboard navigation on first arrow key or Enter
+      if (!keyboardNavEnabled && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key)) {
+        setKeyboardNavEnabled(true);
+        setFocusedCell({ row: 0, col: 0 });
+        e.preventDefault();
+        return;
+      }
+
+      if (!keyboardNavEnabled || !focusedCell || filteredData.length === 0) return;
+
+      const maxRow = filteredData.length - 1;
+      const maxCol = dateRange.length - 1;
+
+      switch (e.key) {
+        case 'ArrowUp':
+          e.preventDefault();
+          setFocusedCell(prev => prev ? {
+            ...prev,
+            row: Math.max(0, prev.row - 1)
+          } : { row: 0, col: 0 });
+          break;
+
+        case 'ArrowDown':
+          e.preventDefault();
+          setFocusedCell(prev => prev ? {
+            ...prev,
+            row: Math.min(maxRow, prev.row + 1)
+          } : { row: 0, col: 0 });
+          break;
+
+        case 'ArrowLeft':
+          e.preventDefault();
+          setFocusedCell(prev => prev ? {
+            ...prev,
+            col: Math.max(0, prev.col - 1)
+          } : { row: 0, col: 0 });
+          break;
+
+        case 'ArrowRight':
+          e.preventDefault();
+          setFocusedCell(prev => prev ? {
+            ...prev,
+            col: Math.min(maxCol, prev.col + 1)
+          } : { row: 0, col: 0 });
+          break;
+
+        case 'Enter':
+          e.preventDefault();
+          // Open shift details for focused cell
+          if (focusedCell) {
+            const engineerData = filteredData[focusedCell.row];
+            const date = dateRange[focusedCell.col];
+            const shiftsOnDate = engineerData.shifts.filter(shift => {
+              const shiftDate = new Date(shift.start);
+              return shiftDate.toDateString() === date.toDateString();
+            });
+            if (shiftsOnDate.length > 0) {
+              setSelectedShifts(shiftsOnDate);
+              setDialogOpen(true);
+            }
+          }
+          break;
+
+        case 'Home':
+          e.preventDefault();
+          setFocusedCell(prev => prev ? { ...prev, col: 0 } : { row: 0, col: 0 });
+          break;
+
+        case 'End':
+          e.preventDefault();
+          setFocusedCell(prev => prev ? { ...prev, col: maxCol } : { row: 0, col: maxCol });
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [keyboardNavEnabled, focusedCell, dialogOpen, dateRange, getFilteredTimelineData]);
+
   return (
     <Box sx={{ p: 3 }}>
       {/* Header */}
@@ -1055,7 +1160,7 @@ const TimelinePage: React.FC = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {getFilteredTimelineData().map((engineerData) => (
+                  {getFilteredTimelineData().map((engineerData, rowIndex) => (
                     <TableRow key={engineerData.engineer}>
                       <TableCell sx={{ 
                         fontWeight: 'bold', 
@@ -1066,12 +1171,13 @@ const TimelinePage: React.FC = () => {
                       }}>
                         {engineerData.engineer}
                       </TableCell>
-                      {dateRange.map((date) => {
+                      {dateRange.map((date, colIndex) => {
                         const dayShifts = getShiftsForEngineerAndDate(engineerData.engineer, date);
                         const dayLeaves = getLeavesForEngineerAndDate(engineerData.engineer, date);
                         const groupedShifts = groupShiftsByType(dayShifts);
                         const hasEvents = dayShifts.length > 0 || dayLeaves.length > 0;
                         const isToday = date.toDateString() === new Date().toDateString();
+                        const isFocused = keyboardNavEnabled && focusedCell?.row === rowIndex && focusedCell?.col === colIndex;
                         
                         return (
                           <TableCell 
@@ -1083,7 +1189,15 @@ const TimelinePage: React.FC = () => {
                                 ? (hasEvents ? '#e3f2fd' : '#f3f9ff')
                                 : (hasEvents ? '#fafafa' : 'transparent'),
                               borderLeft: isToday ? '2px solid #1976d2' : 'none',
-                              borderRight: isToday ? '2px solid #1976d2' : 'none'
+                              borderRight: isToday ? '2px solid #1976d2' : 'none',
+                              // Keyboard focus indicator
+                              ...(isFocused && {
+                                outline: '3px solid #1976d2',
+                                outlineOffset: '-3px',
+                                backgroundColor: '#bbdefb',
+                                position: 'relative',
+                                zIndex: 10
+                              })
                             }}
                           >
                             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
@@ -1365,6 +1479,85 @@ const TimelinePage: React.FC = () => {
             <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
               Shifts show type and time range • Leave requests show type, status, and duration
             </Typography>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Keyboard Shortcuts */}
+      {timelineData.length > 0 && (
+        <Card sx={{ mt: 2 }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              Keyboard Shortcuts
+            </Typography>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: '1fr 1fr 1fr' }, gap: 2 }}>
+              <Box>
+                <Typography variant="body2" color="primary" sx={{ fontWeight: 600 }}>
+                  ↑ ↓ ← → Arrow Keys
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Navigate between cells
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="body2" color="primary" sx={{ fontWeight: 600 }}>
+                  Enter
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Open shift details for focused cell
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="body2" color="primary" sx={{ fontWeight: 600 }}>
+                  Escape
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Close dialog or exit keyboard navigation
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="body2" color="primary" sx={{ fontWeight: 600 }}>
+                  Home
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Jump to first column
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="body2" color="primary" sx={{ fontWeight: 600 }}>
+                  End
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Jump to last column
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="body2" color="primary" sx={{ fontWeight: 600 }}>
+                  Tab
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Navigate through interactive elements
+                </Typography>
+              </Box>
+            </Box>
+            {keyboardNavEnabled && (
+              <Box sx={{ 
+                mt: 2, 
+                p: 1, 
+                backgroundColor: 'info.lighter', 
+                borderRadius: 1,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1
+              }}>
+                <Typography variant="caption" color="info.main" sx={{ fontWeight: 600 }}>
+                  ✓ Keyboard Navigation Active
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Press Escape to disable
+                </Typography>
+              </Box>
+            )}
           </CardContent>
         </Card>
       )}
