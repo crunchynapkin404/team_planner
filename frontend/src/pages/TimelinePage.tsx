@@ -98,7 +98,6 @@ const TimelinePage: React.FC = () => {
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
   const [dateRangeFilter, setDateRangeFilter] = useState<{ start: string | null; end: string | null }>({ start: null, end: null });
   const [employeeFilter, setEmployeeFilter] = useState<string[]>([]);
-  const [employees, setEmployees] = useState<{ id: string; name: string }[]>([]);
   const [savedFilters, setSavedFilters] = useState<Array<{ name: string; filters: any }>>([]);
   const [filterName, setFilterName] = useState('');
 
@@ -552,6 +551,38 @@ const TimelinePage: React.FC = () => {
       })).filter(td => td.shifts.length > 0 || td.leaves.length > 0);
     }
     
+    // Apply date range filter
+    if (dateRangeFilter.start || dateRangeFilter.end) {
+      filtered = filtered.map(td => ({
+        ...td,
+        shifts: td.shifts.filter(shift => {
+          const shiftDate = new Date(shift.start);
+          const start = dateRangeFilter.start ? new Date(dateRangeFilter.start) : null;
+          const end = dateRangeFilter.end ? new Date(dateRangeFilter.end) : null;
+          
+          if (start && shiftDate < start) return false;
+          if (end && shiftDate > end) return false;
+          return true;
+        }),
+        leaves: td.leaves.filter(leave => {
+          const leaveStart = new Date(leave.start);
+          const start = dateRangeFilter.start ? new Date(dateRangeFilter.start) : null;
+          const end = dateRangeFilter.end ? new Date(dateRangeFilter.end) : null;
+          
+          if (start && leaveStart < start) return false;
+          if (end && leaveStart > end) return false;
+          return true;
+        })
+      })).filter(td => td.shifts.length > 0 || td.leaves.length > 0);
+    }
+    
+    // Apply employee filter
+    if (employeeFilter.length > 0) {
+      filtered = filtered.filter(td => 
+        employeeFilter.includes(td.engineer)
+      );
+    }
+    
     return filtered;
   };
 
@@ -785,6 +816,17 @@ const TimelinePage: React.FC = () => {
     // Set current date to today when component first loads
     const today = new Date();
     setCurrentDate(today);
+    
+    // Load saved filters from localStorage
+    const savedFiltersStr = localStorage.getItem('timeline_saved_filters');
+    if (savedFiltersStr) {
+      try {
+        const filters = JSON.parse(savedFiltersStr);
+        setSavedFilters(filters);
+      } catch (err) {
+        console.error('Error loading saved filters:', err);
+      }
+    }
   }, []);
 
   // Regenerate timeline when view mode or current date changes
@@ -1069,8 +1111,18 @@ const TimelinePage: React.FC = () => {
             sx={{ minWidth: 200 }}
           />
 
+          {/* Advanced Filters Button */}
+          <Button
+            variant={filterDrawerOpen ? 'contained' : 'outlined'}
+            startIcon={<FilterAlt />}
+            onClick={() => setFilterDrawerOpen(!filterDrawerOpen)}
+            size="small"
+          >
+            Advanced
+          </Button>
+
           {/* Clear All Filters */}
-          {(searchQuery || statusFilter.length > 0 || shiftTypeFilter.length > 0 || showMyScheduleOnly || teamFilter.length > 0) && (
+          {(searchQuery || statusFilter.length > 0 || shiftTypeFilter.length > 0 || showMyScheduleOnly || teamFilter.length > 0 || employeeFilter.length > 0 || dateRangeFilter.start || dateRangeFilter.end) && (
             <Button
               size="small"
               variant="text"
@@ -1081,6 +1133,8 @@ const TimelinePage: React.FC = () => {
                 setShiftTypeFilter([]);
                 setShowMyScheduleOnly(false);
                 setTeamFilter([]);
+                setEmployeeFilter([]);
+                setDateRangeFilter({ start: null, end: null });
               }}
             >
               Clear All
@@ -1506,7 +1560,7 @@ const TimelinePage: React.FC = () => {
                 flexWrap: 'wrap',
                 justifyContent: 'center'
               }}>
-                {(searchQuery || statusFilter.length > 0 || shiftTypeFilter.length > 0 || showMyScheduleOnly || teamFilter.length > 0) && (
+                {(searchQuery || statusFilter.length > 0 || shiftTypeFilter.length > 0 || showMyScheduleOnly || teamFilter.length > 0 || employeeFilter.length > 0 || dateRangeFilter.start || dateRangeFilter.end) && (
                   <Button
                     variant="contained"
                     color="primary"
@@ -1516,6 +1570,8 @@ const TimelinePage: React.FC = () => {
                       setShiftTypeFilter([]);
                       setShowMyScheduleOnly(false);
                       setTeamFilter([]);
+                      setEmployeeFilter([]);
+                      setDateRangeFilter({ start: null, end: null });
                     }}
                   >
                     Clear All Filters
@@ -1848,6 +1904,238 @@ const TimelinePage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Advanced Filter Drawer */}
+      <Drawer
+        anchor="right"
+        open={filterDrawerOpen}
+        onClose={() => setFilterDrawerOpen(false)}
+        sx={{ 
+          '& .MuiDrawer-paper': { 
+            width: 350, 
+            p: 3,
+            zIndex: 1200
+          } 
+        }}
+        className="filter-drawer print-hide"
+      >
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            Advanced Filters
+          </Typography>
+          <IconButton size="small" onClick={() => setFilterDrawerOpen(false)}>
+            <Close />
+          </IconButton>
+        </Box>
+
+        <Divider sx={{ mb: 3 }} />
+
+        {/* Date Range Section */}
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600, mb: 2 }}>
+            Date Range
+          </Typography>
+          <TextField
+            label="Start Date"
+            type="date"
+            size="small"
+            fullWidth
+            value={dateRangeFilter.start || ''}
+            onChange={(e) => setDateRangeFilter({ ...dateRangeFilter, start: e.target.value })}
+            InputLabelProps={{ shrink: true }}
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            label="End Date"
+            type="date"
+            size="small"
+            fullWidth
+            value={dateRangeFilter.end || ''}
+            onChange={(e) => setDateRangeFilter({ ...dateRangeFilter, end: e.target.value })}
+            InputLabelProps={{ shrink: true }}
+            sx={{ mb: 2 }}
+          />
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            <Chip 
+              label="Last 7 days" 
+              size="small" 
+              onClick={() => {
+                const end = new Date();
+                const start = new Date();
+                start.setDate(start.getDate() - 7);
+                setDateRangeFilter({
+                  start: start.toISOString().split('T')[0],
+                  end: end.toISOString().split('T')[0]
+                });
+              }}
+            />
+            <Chip 
+              label="Next 30 days" 
+              size="small" 
+              onClick={() => {
+                const start = new Date();
+                const end = new Date();
+                end.setDate(end.getDate() + 30);
+                setDateRangeFilter({
+                  start: start.toISOString().split('T')[0],
+                  end: end.toISOString().split('T')[0]
+                });
+              }}
+            />
+          </Box>
+          {(dateRangeFilter.start || dateRangeFilter.end) && (
+            <Button
+              size="small"
+              onClick={() => setDateRangeFilter({ start: null, end: null })}
+              sx={{ mt: 1 }}
+            >
+              Clear Date Range
+            </Button>
+          )}
+        </Box>
+
+        <Divider sx={{ mb: 3 }} />
+
+        {/* Employee Selection */}
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600, mb: 2 }}>
+            Filter by Employee
+          </Typography>
+          <Autocomplete
+            multiple
+            size="small"
+            options={timelineData.map(td => td.engineer)}
+            value={employeeFilter}
+            onChange={(_, newValue) => setEmployeeFilter(newValue)}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                placeholder={employeeFilter.length === 0 ? "Select employees..." : ""}
+                size="small"
+              />
+            )}
+            renderOption={(props, option, { selected }) => (
+              <li {...props}>
+                <Checkbox checked={selected} size="small" />
+                {option}
+              </li>
+            )}
+          />
+          {employeeFilter.length > 0 && (
+            <Box sx={{ mt: 1, display: 'flex', justifyContent: 'space-between' }}>
+              <Typography variant="caption" color="text.secondary">
+                {employeeFilter.length} selected
+              </Typography>
+              <Button size="small" onClick={() => setEmployeeFilter([])}>
+                Clear
+              </Button>
+            </Box>
+          )}
+        </Box>
+
+        <Divider sx={{ mb: 3 }} />
+
+        {/* Save Filter Section */}
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600, mb: 2 }}>
+            Save Current Filters
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <TextField
+              size="small"
+              placeholder="Filter name..."
+              value={filterName}
+              onChange={(e) => setFilterName(e.target.value)}
+              fullWidth
+            />
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<Save />}
+              onClick={() => {
+                if (!filterName.trim()) {
+                  alert('Please enter a filter name');
+                  return;
+                }
+                
+                const newFilter = {
+                  name: filterName,
+                  filters: {
+                    searchQuery,
+                    statusFilter,
+                    shiftTypeFilter,
+                    teamFilter,
+                    employeeFilter,
+                    dateRangeFilter,
+                    showMyScheduleOnly
+                  }
+                };
+                
+                const updated = [...savedFilters, newFilter];
+                setSavedFilters(updated);
+                localStorage.setItem('timeline_saved_filters', JSON.stringify(updated));
+                setFilterName('');
+                alert('Filter saved!');
+              }}
+              disabled={!filterName.trim()}
+            >
+              Save
+            </Button>
+          </Box>
+        </Box>
+
+        <Divider sx={{ mb: 3 }} />
+
+        {/* Saved Filters List */}
+        <Box>
+          <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600, mb: 2 }}>
+            Saved Filters
+          </Typography>
+          {savedFilters.length === 0 ? (
+            <Typography variant="caption" color="text.secondary">
+              No saved filters yet
+            </Typography>
+          ) : (
+            <List dense>
+              {savedFilters.map((filter, index) => (
+                <ListItem
+                  key={index}
+                  secondaryAction={
+                    <IconButton
+                      edge="end"
+                      size="small"
+                      onClick={() => {
+                        const updated = savedFilters.filter((_, i) => i !== index);
+                        setSavedFilters(updated);
+                        localStorage.setItem('timeline_saved_filters', JSON.stringify(updated));
+                      }}
+                    >
+                      <Delete fontSize="small" />
+                    </IconButton>
+                  }
+                >
+                  <ListItemButton
+                    onClick={() => {
+                      const f = filter.filters;
+                      setSearchQuery(f.searchQuery || '');
+                      setStatusFilter(f.statusFilter || []);
+                      setShiftTypeFilter(f.shiftTypeFilter || []);
+                      setTeamFilter(f.teamFilter || []);
+                      setEmployeeFilter(f.employeeFilter || []);
+                      setDateRangeFilter(f.dateRangeFilter || { start: null, end: null });
+                      setShowMyScheduleOnly(f.showMyScheduleOnly || false);
+                      setFilterDrawerOpen(false);
+                    }}
+                  >
+                    <BookmarkBorder sx={{ mr: 1, fontSize: 18 }} />
+                    <ListItemText primary={filter.name} />
+                  </ListItemButton>
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </Box>
+      </Drawer>
 
       {/* Print Button - Fixed bottom-right */}
       <Fab
