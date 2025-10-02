@@ -33,6 +33,12 @@ import {
   Fab,
   Autocomplete,
   Checkbox,
+  Drawer,
+  Divider,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemButton,
 } from '@mui/material';
 import {
   ChevronLeft,
@@ -52,6 +58,10 @@ import {
   Settings,
   Print,
   Refresh,
+  FilterAlt,
+  Save,
+  BookmarkBorder,
+  Bookmark,
 } from '@mui/icons-material';
 import { apiClient } from '../services/apiClient';
 import { API_CONFIG } from '../config/api';
@@ -83,6 +93,14 @@ const TimelinePage: React.FC = () => {
   const [showMyScheduleOnly, setShowMyScheduleOnly] = useState(false);
   const [teamFilter, setTeamFilter] = useState<string[]>([]);
   const [teams, setTeams] = useState<{ id: number; name: string }[]>([]);
+  
+  // Advanced filter panel states
+  const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
+  const [dateRangeFilter, setDateRangeFilter] = useState<{ start: string | null; end: string | null }>({ start: null, end: null });
+  const [employeeFilter, setEmployeeFilter] = useState<string[]>([]);
+  const [employees, setEmployees] = useState<{ id: string; name: string }[]>([]);
+  const [savedFilters, setSavedFilters] = useState<Array<{ name: string; filters: any }>>([]);
+  const [filterName, setFilterName] = useState('');
 
   // Keyboard navigation state
   const [focusedCell, setFocusedCell] = useState<{ row: number; col: number } | null>(null);
